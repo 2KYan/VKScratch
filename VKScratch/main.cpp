@@ -48,8 +48,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageTypeFlagsEXT messageType,
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
     void* pUserData) {
-
-    std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+    
+    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+    }
 
     return VK_FALSE;
 }
@@ -81,12 +83,8 @@ int main()
     }
     extensions.push_back("VK_EXT_debug_utils");
 
-    uint32_t n_extensions = 0;
-    vk::enumerateInstanceExtensionProperties(nullptr, &n_extensions, nullptr);
-    std::vector<vk::ExtensionProperties> availExtensions(n_extensions);
-    if (n_extensions != 0) {
-        vk::enumerateInstanceExtensionProperties(nullptr, &n_extensions, availExtensions.data());
-    }
+    std::vector<vk::ExtensionProperties> availExtensions = vk::enumerateInstanceExtensionProperties();
+    std::vector<vk::LayerProperties> availableLayers = vk::enumerateInstanceLayerProperties();
 
     // Use validation layers if this is a debug build
     std::vector<const char*> layers;
@@ -95,16 +93,6 @@ int main()
     layers.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
 
-    uint32_t n_layers;
-    vk::enumerateInstanceLayerProperties(&n_layers, nullptr);
-    std::vector<VkLayerProperties> availableLayers(n_layers);
-    vkEnumerateInstanceLayerProperties(&n_layers, availableLayers.data());
-
-    for (auto layerName : layers) {
-        
-    }
-
-
     // vk::ApplicationInfo allows the programmer to specifiy some basic information about the
     // program, which can be useful for layers and tools to provide more debug information.
     vk::ApplicationInfo appInfo = vk::ApplicationInfo()
@@ -112,7 +100,7 @@ int main()
         .setApplicationVersion(1)
         .setPEngineName("LunarG SDK")
         .setEngineVersion(1)
-        .setApiVersion(VK_API_VERSION_1_0);
+        .setApiVersion(VK_API_VERSION_1_1);
 
     // vk::InstanceCreateInfo is where the programmer specifies the layers and/or extensions that
     // are needed.
@@ -125,61 +113,74 @@ int main()
         .setPpEnabledLayerNames(layers.data());
 
     // Create the Vulkan instance.
-    vk::Instance instance;
     try {
-        instance = vk::createInstance(instInfo);
-    } catch(const std::exception& e) {
-        std::cout << "Could not create a Vulkan instance: " << e.what() << std::endl;
-        return 1;
-    }
+        vk::UniqueInstance instance = vk::createInstanceUnique(instInfo);
+        VkSurfaceKHR c_surface;
+        if(!SDL_Vulkan_CreateSurface(window, static_cast<VkInstance>(*instance), &c_surface)) {
+            std::cout << "Could not create a Vulkan surface." << std::endl;
+            return 1;
+        }
+        vk::SurfaceKHR surface(c_surface);
 
-    // Create a Vulkan surface for rendering
-    VkSurfaceKHR c_surface;
-    if(!SDL_Vulkan_CreateSurface(window, static_cast<VkInstance>(instance), &c_surface)) {
-        std::cout << "Could not create a Vulkan surface." << std::endl;
-        return 1;
-    }
-    vk::SurfaceKHR surface(c_surface);
+        vk::DispatchLoaderDynamic dldi(*instance);
 
-    vk::DispatchLoaderDynamic dldi(instance);
+        vk::DebugUtilsMessengerEXT debugMessenger;
+        vk::DebugUtilsMessengerCreateInfoEXT debugCreateInfo = vk::DebugUtilsMessengerCreateInfoEXT()
+            .setMessageSeverity(vk::DebugUtilsMessageSeverityFlagBitsEXT::eError | vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
+            .setMessageType(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance)
+            .setPfnUserCallback(debugCallback)
+            .setPUserData(nullptr);
 
-    vk::DebugUtilsMessengerEXT debugMessenger;
-    vk::DebugUtilsMessengerCreateInfoEXT debugCreateInfo = vk::DebugUtilsMessengerCreateInfoEXT()
-        .setMessageSeverity(vk::DebugUtilsMessageSeverityFlagBitsEXT::eError | vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
-        .setMessageType(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance)
-        .setPfnUserCallback(debugCallback)
-        .setPUserData(nullptr);
+        auto dbgMessenger = instance->createDebugUtilsMessengerEXTUnique(debugCreateInfo, nullptr, dldi);
+        // This is where most initializtion for a program should be performed
+        std::vector<vk::PhysicalDevice> devices = instance->enumeratePhysicalDevices(dldi);
 
-    instance.createDebugUtilsMessengerEXT(&debugCreateInfo, nullptr, &debugMessenger, dldi);
-    // This is where most initializtion for a program should be performed
-
-    // Poll for user input.
-    bool stillRunning = true;
-    while(stillRunning) {
-
-        SDL_Event event;
-        while(SDL_PollEvent(&event)) {
-
-            switch(event.type) {
-
-            case SDL_QUIT:
-                stillRunning = false;
-                break;
-
-            default:
-                // Do nothing.
-                break;
-            }
+        for (auto device : devices) {
+            vk::PhysicalDeviceProperties deviceProperties = device.getProperties();
+            vk::PhysicalDeviceFeatures deviceFeatures = device.getFeatures();
+            //vk::PhysicalDeviceProperties2 deviceProperties2 = device.getProperties2(dldi);
+            //vk::PhysicalDeviceFeatures2 deviceFeatures2 = device.getFeatures2(dldi);
+            printf("test");
         }
 
-        SDL_Delay(10);
+        // Poll for user input.
+        bool stillRunning = true;
+        while(stillRunning) {
+
+            SDL_Event event;
+            while(SDL_PollEvent(&event)) {
+
+                switch(event.type) {
+
+                case SDL_QUIT:
+                    stillRunning = false;
+                    break;
+
+                default:
+                    // Do nothing.
+                    break;
+                }
+            }
+
+            SDL_Delay(10);
+        }
+
+        // Clean up.
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+
     }
-
-    // Clean up.
-    instance.destroySurfaceKHR(surface);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    instance.destroy();
-
+    catch (vk::SystemError err)
+    {
+        std::cout << "vk::SystemError: " << err.what() << std::endl;
+        exit(-1);
+    }
+    catch (...)
+    {
+        std::cout << "unknown error\n";
+        exit(-1);
+    }
+    return 0;
+    // Create a Vulkan surface for rendering
     return 0;
 }
