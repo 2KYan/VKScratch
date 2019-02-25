@@ -108,21 +108,28 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
-uint32_t width = 1280;
-uint32_t height = 720;
+uint32_t m_width = 1280;
+uint32_t m_height = 720;
+
+void initVulkan()
+{
+
+}
+
+void initWindow()
+{
+
+}
 
 int main()
 {
-    std::vector<vk::ExtensionProperties> availExtensions = vk::enumerateInstanceExtensionProperties();
-    std::vector<vk::LayerProperties> availableLayers = vk::enumerateInstanceLayerProperties();
-
     // Create an SDL window that supports Vulkan rendering.
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cout << "Could not initialize SDL." << std::endl;
         return 1;
     }
     SDL_Window* window = SDL_CreateWindow("Vulkan Window", SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_VULKAN);
+        SDL_WINDOWPOS_CENTERED, m_width, m_height, SDL_WINDOW_VULKAN);
     if (window == NULL) {
         std::cout << "Could not create SDL window." << std::endl;
         return 1;
@@ -225,7 +232,8 @@ int main()
         vk::UniqueDevice device = physicalDevice.createDeviceUnique(deviceCreateInfo);
 
         vk::CommandPoolCreateInfo cmdPoolCreateInfo = vk::CommandPoolCreateInfo().setQueueFamilyIndex(deviceQueueCreateInfo.queueFamilyIndex);
-        vk::UniqueCommandPool cmdPool = device->createCommandPoolUnique(cmdPoolCreateInfo);
+        vk::UniqueCommandPool cmdPool;
+        cmdPool = device->createCommandPoolUnique(cmdPoolCreateInfo);
         std::vector<vk::UniqueCommandBuffer> cmdBuffers = device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo(cmdPool.get()).setCommandBufferCount(1));
 
         //Swap Chain
