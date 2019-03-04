@@ -290,7 +290,7 @@ int main()
         } else {
             throw std::runtime_error("DepthStencilAttachment is not supported for D16Unorm depth format.");
         }
-        vk::ImageCreateInfo imageCreateInfo(vk::ImageCreateFlags(), vk::ImageType::e2D, depthFormat, vk::Extent3D(width, height, 1), 1, 1, vk::SampleCountFlagBits::e1, tiling, vk::ImageUsageFlagBits::eDepthStencilAttachment);
+        vk::ImageCreateInfo imageCreateInfo(vk::ImageCreateFlags(), vk::ImageType::e2D, depthFormat, vk::Extent3D(m_width, m_height, 1), 1, 1, vk::SampleCountFlagBits::e1, tiling, vk::ImageUsageFlagBits::eDepthStencilAttachment);
         vk::UniqueImage depthImage = device->createImageUnique(imageCreateInfo);
 
         vk::PhysicalDeviceMemoryProperties imageMemoryProperties = physicalDevice.getMemoryProperties();

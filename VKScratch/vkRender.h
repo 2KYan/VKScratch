@@ -47,11 +47,18 @@ struct DescriptorSetParams
     vk::UniqueDescriptorSet set;
 };
 
+struct SwapChainSupportDetails
+{
+    vk::SurfaceCapabilitiesKHR capabilities;
+    std::vector<vk::SurfaceFormatKHR> formats;
+    std::vector<vk::PresentModeKHR> presentModes;
+};
+
 struct SwapChainParams
 {
-    vk::UniqueSwapchainKHR m_swapChainKHR;
-    vk::Format foramt;
-    std::vector<vk::UniqueImage> images;
+    vk::UniqueSwapchainKHR swapChainKHR;
+    vk::Format format;
+    std::vector<vk::Image> images;
     std::vector<vk::UniqueImageView> views;
     vk::Extent2D extent;
     vk::PresentInfoKHR presentMode;
@@ -59,15 +66,18 @@ struct SwapChainParams
 
 };
 
+struct SDL_Window;
+
 struct CommonParams
 {
+    SDL_Window* window;
     vk::DispatchLoaderDynamic dldi;
     vk::UniqueInstance instance;
-    vk::UniqueSurfaceKHR surfaceKHR;
 
-    std::vector<vk::PhysicalDevice> devices;
-    uint32_t physicalDeviceIndex;
+    vk::DebugUtilsMessengerEXT dbgMessenger;
+    vk::SurfaceKHR surfaceKHR;
 
+    vk::PhysicalDevice physicalDevice;
     vk::UniqueDevice device;
 
     QueueParams gQueue;
@@ -95,6 +105,9 @@ protected:
     int mainLoop();
     int cleanup();
 
+private:
+    void findQueueFamilies(bool presentSupport);
+    
 private:
     void createInstance();
     void setupDebugMessenger();
