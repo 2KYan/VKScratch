@@ -21,14 +21,15 @@
     <ClCompile Include="vkRender.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="ref_001.txt">
+    <ClCompile Include="vku.cpp">
       <Filter>Source Files</Filter>
-    </Text>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vkRender.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vku.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

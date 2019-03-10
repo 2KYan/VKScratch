@@ -1,4 +1,19 @@
+// Enable the WSI extensions
+#if defined(__ANDROID__)
+#define VK_USE_PLATFORM_ANDROID_KHR
+#elif defined(__linux__)
+#define VK_USE_PLATFORM_XLIB_KHR
+#elif defined(_WIN32)
+#define VK_USE_PLATFORM_WIN32_KHR
+#endif
+
+// Tell SDL not to mess with main()
+#define SDL_MAIN_HANDLED
+
 #include "vkRender.h"
+#include "vku.h"
+
+#include "shaderc/shaderc.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
@@ -132,12 +147,18 @@ int vkRender::initVulkan()
     createLogicalDevice();
     createSwapChain();
     createImageViews();
+    createGraphicsPipeline();
 
     return 0;
 }
 
 int vkRender::cleanup()
 {
+    m_vulkan.instance->destroyDebugUtilsMessengerEXT(m_vulkan.dbgMessenger, nullptr, m_vulkan.dldi);
+    // m_vulkan.instance->destroySurfaceKHR(m_vulkan.surfaceKHR);
+
+    SDL_DestroyWindow(m_vulkan.window);
+    SDL_Quit();
     return 0;
 }
 
@@ -168,6 +189,27 @@ void vkRender::findQueueFamilies(bool presentSupport = true)
 
 int vkRender::mainLoop()
 {
+    bool stillRunning = true;
+    while (stillRunning) {
+
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+
+            switch (event.type) {
+
+            case SDL_QUIT:
+                stillRunning = false;
+                break;
+
+            default:
+                // Do nothing.
+                break;
+            }
+        }
+
+        SDL_Delay(10);
+    }
+
     return 0;
 }
 
@@ -252,8 +294,11 @@ void vkRender::createLogicalDevice()
     vk::DeviceQueueCreateInfo deviceQueueCreateInfo;
     deviceQueueCreateInfo.setPQueuePriorities(&queuePriority).setQueueCount(1).setQueueFamilyIndex(m_vulkan.gQueue.familyIndex);
     dqCreateInfoArray.push_back(deviceQueueCreateInfo);
-    deviceQueueCreateInfo.setQueueFamilyIndex(m_vulkan.pQueue.familyIndex);
-    dqCreateInfoArray.push_back(deviceQueueCreateInfo);
+
+    if (m_vulkan.pQueue.familyIndex != m_vulkan.gQueue.familyIndex) {
+        deviceQueueCreateInfo.setQueueFamilyIndex(m_vulkan.pQueue.familyIndex);
+        dqCreateInfoArray.push_back(deviceQueueCreateInfo);
+    }
 
     vk::DeviceCreateInfo deviceCreateInfo = vk::DeviceCreateInfo(vk::DeviceCreateFlags(), dqCreateInfoArray.size(), dqCreateInfoArray.data());
     auto deviceExtensions = getDeviceExtensions();
@@ -341,5 +386,41 @@ void vkRender::createImageViews()
         vk::ImageViewCreateInfo imageViewCreateInfo(vk::ImageViewCreateFlags(), image, vk::ImageViewType::e2D, m_vulkan.swapChain.format, componentMapping, subResourceRange);
         m_vulkan.swapChain.views.push_back(m_vulkan.device->createImageViewUnique(imageViewCreateInfo));
     }
+}
+
+void vkRender::createGraphicsPipeline()
+{
+    size_t shaderSize;
+    auto vertShaderCode = vku::instance()->glslCompile("simple.vert", shaderSize, shaderc_vertex_shader);
+    auto vertShaderCreateInfo = vk::ShaderModuleCreateInfo{ vk::ShaderModuleCreateFlags(), shaderSize, vertShaderCode.data() };
+    auto vertShaderModule = m_vulkan.device->createShaderModuleUnique(vertShaderCreateInfo);
+
+    auto fragShaderCode = vku::instance()->glslCompile("simple.frag", shaderSize, shaderc_fragment_shader);
+    auto fragShaderCreateInfo = vk::ShaderModuleCreateInfo{ {}, shaderSize, fragShaderCode.data() };
+    auto fragShaderModule = m_vulkan.device->createShaderModuleUnique(vertShaderCreateInfo);
+
+    vk::PipelineShaderStageCreateInfo vertShaderStageInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eVertex,vertShaderModule.get(), "main");
+    vk::PipelineShaderStageCreateInfo fragShaderStageInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eFragment, fragShaderModule.get(), "main");
+
+    vk::PipelineShaderStageCreateInfo shaderStage[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+    vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+    vk::PipelineInputAssemblyStateCreateInfo inputAssembly(vk::PipelineInputAssemblyStateCreateFlags(), vk::PrimitiveTopology::eTriangleList);
+
+    vk::Viewport viewport(0, 0, m_vulkan.swapChain.extent.width, m_vulkan.swapChain.extent.height, 0.0, 1.0);
+    vk::Rect2D scissor(vk::Offset2D(0, 0), vk::Extent2D(m_vulkan.swapChain.extent));
+    vk::PipelineViewportStateCreateInfo viewportState(vk::PipelineViewportStateCreateFlags(), 1, &viewport, 1, &scissor);
+
+    vk::PipelineRasterizationStateCreateInfo rasterizer(vk::PipelineRasterizationStateCreateFlags(), 0, 0, vk::PolygonMode::eFill, vk::CullModeFlags(), vk::FrontFace::eClockwise, 0, 0, 0, 0, 1.0);
+
+    vk::PipelineMultisampleStateCreateInfo multisampling;
+
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment;
+    colorBlendAttachment.setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+    vk::PipelineColorBlendStateCreateInfo colorBlending(vk::PipelineColorBlendStateCreateFlags(), 0, vk::LogicOp::eCopy, 1, &colorBlendAttachment);
+    
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+    m_vulkan.pipelineLayout = m_vulkan.device->createPipelineLayoutUnique(pipelineLayoutInfo);
+
 }
 

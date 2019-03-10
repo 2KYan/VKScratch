@@ -84,6 +84,7 @@ struct CommonParams
     QueueParams pQueue;
     SwapChainParams swapChain;
 
+    vk::UniquePipelineLayout pipelineLayout;
 };
 
 class vkRender
@@ -116,5 +117,6 @@ private:
     void createLogicalDevice();
     void createSwapChain();
     void createImageViews();
+    void createGraphicsPipeline();
 
 };
