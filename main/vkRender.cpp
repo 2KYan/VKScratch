@@ -135,6 +135,7 @@ int vkRender::initWindow()
         std::cout << "Could not create SDL window." << std::endl;
         return 1;
     }
+    SDL_SetWindowResizable(m_vulkan.window, SDL_TRUE);
     return 0;
 }
 
@@ -147,7 +148,12 @@ int vkRender::initVulkan()
     createLogicalDevice();
     createSwapChain();
     createImageViews();
+    createRenderPass();
     createGraphicsPipeline();
+    createFrameBuffers();
+    createCommandPool();
+    createCommandBuffers();
+    createSyncObjects();
 
     return 0;
 }
@@ -155,7 +161,6 @@ int vkRender::initVulkan()
 int vkRender::cleanup()
 {
     m_vulkan.instance->destroyDebugUtilsMessengerEXT(m_vulkan.dbgMessenger, nullptr, m_vulkan.dldi);
-    // m_vulkan.instance->destroySurfaceKHR(m_vulkan.surfaceKHR);
 
     SDL_DestroyWindow(m_vulkan.window);
     SDL_Quit();
@@ -206,9 +211,11 @@ int vkRender::mainLoop()
                 break;
             }
         }
+        drawFrame();
 
         SDL_Delay(10);
     }
+    m_vulkan.device->waitIdle();
 
     return 0;
 }
@@ -388,6 +395,38 @@ void vkRender::createImageViews()
     }
 }
 
+void vkRender::createRenderPass()
+{
+    vk::AttachmentDescription colorAttachment = {};
+    colorAttachment.setFormat(m_vulkan.swapChain.format).setSamples(vk::SampleCountFlagBits::e1);
+    colorAttachment.setLoadOp(vk::AttachmentLoadOp::eClear).setStoreOp(vk::AttachmentStoreOp::eStore);
+    colorAttachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare).setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
+    colorAttachment.setInitialLayout(vk::ImageLayout::eUndefined).setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
+
+    vk::AttachmentReference colorAttachmentRef;
+    colorAttachmentRef.setAttachment(0).setLayout(vk::ImageLayout::eColorAttachmentOptimal);
+    
+    vk::SubpassDescription subpass;
+    subpass.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics).setColorAttachmentCount(1).setPColorAttachments(&colorAttachmentRef);
+
+    vk::SubpassDependency dependency;
+    dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL).setDstSubpass(0)
+        .setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+        .setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentRead)
+        .setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+        .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
+
+    vk::RenderPassCreateInfo renderPassInfo;
+    renderPassInfo.setAttachmentCount(1)
+        .setPAttachments(&colorAttachment)
+        .setSubpassCount(1)
+        .setPSubpasses(&subpass)
+        .setDependencyCount(1)
+        .setPDependencies(&dependency);
+
+    m_vulkan.renderPass = m_vulkan.device->createRenderPassUnique(renderPassInfo);
+}
+
 void vkRender::createGraphicsPipeline()
 {
     size_t shaderSize;
@@ -397,17 +436,17 @@ void vkRender::createGraphicsPipeline()
 
     auto fragShaderCode = vku::instance()->glslCompile("simple.frag", shaderSize, shaderc_fragment_shader);
     auto fragShaderCreateInfo = vk::ShaderModuleCreateInfo{ {}, shaderSize, fragShaderCode.data() };
-    auto fragShaderModule = m_vulkan.device->createShaderModuleUnique(vertShaderCreateInfo);
+    auto fragShaderModule = m_vulkan.device->createShaderModuleUnique(fragShaderCreateInfo);
 
     vk::PipelineShaderStageCreateInfo vertShaderStageInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eVertex,vertShaderModule.get(), "main");
     vk::PipelineShaderStageCreateInfo fragShaderStageInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eFragment, fragShaderModule.get(), "main");
 
-    vk::PipelineShaderStageCreateInfo shaderStage[] = { vertShaderStageInfo, fragShaderStageInfo };
+    vk::PipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
     vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly(vk::PipelineInputAssemblyStateCreateFlags(), vk::PrimitiveTopology::eTriangleList);
 
-    vk::Viewport viewport(0, 0, m_vulkan.swapChain.extent.width, m_vulkan.swapChain.extent.height, 0.0, 1.0);
+    vk::Viewport viewport(0, 0, float(m_vulkan.swapChain.extent.width), float(m_vulkan.swapChain.extent.height), 0.0, 1.0);
     vk::Rect2D scissor(vk::Offset2D(0, 0), vk::Extent2D(m_vulkan.swapChain.extent));
     vk::PipelineViewportStateCreateInfo viewportState(vk::PipelineViewportStateCreateFlags(), 1, &viewport, 1, &scissor);
 
@@ -422,5 +461,141 @@ void vkRender::createGraphicsPipeline()
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
     m_vulkan.pipelineLayout = m_vulkan.device->createPipelineLayoutUnique(pipelineLayoutInfo);
 
+    vk::GraphicsPipelineCreateInfo pipelineCreateInfo;
+    pipelineCreateInfo.setStageCount(2)
+        .setPStages(shaderStages)
+        .setPVertexInputState(&vertexInputInfo)
+        .setPInputAssemblyState(&inputAssembly)
+        .setPViewportState(&viewportState)
+        .setPRasterizationState(&rasterizer)
+        .setPMultisampleState(&multisampling)
+        .setPColorBlendState(&colorBlending)
+        .setLayout(m_vulkan.pipelineLayout.get())
+        .setRenderPass(m_vulkan.renderPass.get())
+        .setSubpass(0)
+        .setBasePipelineHandle(VK_NULL_HANDLE);
+
+    m_vulkan.pipeLine = m_vulkan.device->createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineCreateInfo);
+
+}
+
+
+void vkRender::createFrameBuffers()
+{
+    m_vulkan.swapChinaFrameBuffers.resize(m_vulkan.swapChain.views.size());
+
+    for (size_t i = 0; i < m_vulkan.swapChain.views.size(); ++i) {
+        vk::ImageView attachments[] = {
+            m_vulkan.swapChain.views[i].get()
+        };
+
+        vk::FramebufferCreateInfo frameBufferInfo;
+        frameBufferInfo.setRenderPass(m_vulkan.renderPass.get())
+            .setAttachmentCount(1)
+            .setPAttachments(attachments)
+            .setWidth(m_vulkan.swapChain.extent.width)
+            .setHeight(m_vulkan.swapChain.extent.height)
+            .setLayers(1);
+
+        m_vulkan.swapChinaFrameBuffers[i] = m_vulkan.device->createFramebufferUnique(frameBufferInfo);
+    }
+}
+
+void vkRender::createCommandPool()
+{
+    vk::CommandPoolCreateInfo poolInfo;
+    poolInfo.setQueueFamilyIndex(m_vulkan.gQueue.familyIndex);
+    m_vulkan.commandPool = m_vulkan.device->createCommandPoolUnique(poolInfo);
+
+}
+
+void vkRender::createCommandBuffers() 
+{
+    vk::CommandBufferAllocateInfo allocInfo;
+    allocInfo.setCommandBufferCount(m_vulkan.swapChain.views.size())
+        .setCommandPool(m_vulkan.commandPool.get())
+        .setLevel(vk::CommandBufferLevel::ePrimary);
+
+    m_vulkan.commandBuffers = m_vulkan.device->allocateCommandBuffersUnique(allocInfo);
+
+    for(size_t i=0;i<m_vulkan.commandBuffers.size();++i) {
+        m_vulkan.commandBuffers[i]->begin(vk::CommandBufferBeginInfo().setFlags(vk::CommandBufferUsageFlagBits::eSimultaneousUse));
+        vk::Rect2D renderArea(vk::Offset2D(0, 0), m_vulkan.swapChain.extent);
+        vk::ClearValue clearValue;
+        clearValue.color.float32[3] = 1.0;
+        
+        vk::RenderPassBeginInfo rpBeginInfo(m_vulkan.renderPass.get(), m_vulkan.swapChinaFrameBuffers[i].get(),  renderArea, 1, &clearValue);
+        m_vulkan.commandBuffers[i]->beginRenderPass(rpBeginInfo, vk::SubpassContents::eInline);
+        m_vulkan.commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, m_vulkan.pipeLine.get());
+        m_vulkan.commandBuffers[i]->draw(3, 1, 0, 0);
+        m_vulkan.commandBuffers[i]->endRenderPass();
+
+        m_vulkan.commandBuffers[i]->end();
+    }
+
+}
+
+void vkRender::createSyncObjects()
+{
+    vk::SemaphoreCreateInfo semaphorInfo;
+    m_vulkan.imageAvailableSemaphore.resize(m_max_frame_in_flight);
+    m_vulkan.renderFinishedSemaphore.resize(m_max_frame_in_flight);
+    m_vulkan.inFlightFences.resize(m_max_frame_in_flight);
+    for (uint32_t i = 0; i < m_max_frame_in_flight; ++i) {
+        m_vulkan.imageAvailableSemaphore[i] = m_vulkan.device->createSemaphoreUnique(semaphorInfo);
+        m_vulkan.renderFinishedSemaphore[i] = m_vulkan.device->createSemaphoreUnique(semaphorInfo);
+        m_vulkan.inFlightFences[i] = m_vulkan.device->createFenceUnique(vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled));
+    }
+
+}
+
+void vkRender::drawFrame()
+{
+    m_vulkan.device->waitForFences(1, &m_vulkan.inFlightFences[m_currentFrame].get(), VK_TRUE, std::numeric_limits<uint32_t>::max());
+    m_vulkan.device->resetFences(1, &m_vulkan.inFlightFences[m_currentFrame].get());
+
+    auto imageIndex = m_vulkan.device->acquireNextImageKHR(m_vulkan.swapChain.swapChainKHR.get(), std::numeric_limits<uint32_t>::max(), m_vulkan.imageAvailableSemaphore[m_currentFrame].get(), VK_NULL_HANDLE);
+
+    vk::SubmitInfo submitInfo;
+    const vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+    submitInfo.setCommandBufferCount(1)
+        .setPCommandBuffers(&m_vulkan.commandBuffers[imageIndex.value].get())
+        .setWaitSemaphoreCount(1)
+        .setPWaitSemaphores(&m_vulkan.imageAvailableSemaphore[m_currentFrame].get())
+        .setPWaitDstStageMask(waitStages)
+        .setSignalSemaphoreCount(1)
+        .setPSignalSemaphores(&m_vulkan.renderFinishedSemaphore[m_currentFrame].get());
+    m_vulkan.gQueue.queue.submit(1, &submitInfo, m_vulkan.inFlightFences[m_currentFrame].get());
+
+    vk::PresentInfoKHR presentInfo;
+    presentInfo.setWaitSemaphoreCount(1)
+        .setPWaitSemaphores(&m_vulkan.renderFinishedSemaphore[m_currentFrame].get())
+        .setSwapchainCount(1)
+        .setPSwapchains(&m_vulkan.swapChain.swapChainKHR.get())
+        .setPImageIndices(&imageIndex.value);
+    m_vulkan.pQueue.queue.presentKHR(&presentInfo);
+
+    m_currentFrame = (m_currentFrame + 1) % m_max_frame_in_flight;
+}
+
+void vkRender::cleanupSwapChain()
+{
+    for (const auto& swapChainBuffer : m_vulkan.swapChinaFrameBuffers) {
+        m_vulkan.device->destroyFramebuffer(swapChainBuffer.get());
+    }
+}
+
+void vkRender::recreateSwapChain()
+{
+    m_vulkan.device->waitIdle();
+
+    cleanupSwapChain();
+
+    createSwapChain();
+    createImageViews();
+    createRenderPass();
+    createGraphicsPipeline();
+    createFrameBuffers();
+    createCommandBuffers();
 }
 

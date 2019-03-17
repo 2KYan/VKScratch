@@ -84,7 +84,17 @@ struct CommonParams
     QueueParams pQueue;
     SwapChainParams swapChain;
 
+    vk::UniqueRenderPass renderPass;
     vk::UniquePipelineLayout pipelineLayout;
+    vk::UniquePipeline pipeLine;
+    std::vector<vk::UniqueFramebuffer> swapChinaFrameBuffers;
+
+    vk::UniqueCommandPool commandPool;
+    std::vector<vk::UniqueCommandBuffer> commandBuffers;
+
+    std::vector<vk::UniqueSemaphore> imageAvailableSemaphore;
+    std::vector<vk::UniqueSemaphore> renderFinishedSemaphore;
+    std::vector<vk::UniqueFence> inFlightFences;
 };
 
 class vkRender
@@ -98,6 +108,8 @@ public:
 protected:
     uint32_t m_width = 1280;
     uint32_t m_height = 720;
+    uint32_t m_max_frame_in_flight = 2;
+    uint32_t m_currentFrame = 0; 
     CommonParams m_vulkan;
 
 protected:
@@ -110,13 +122,24 @@ private:
     void findQueueFamilies(bool presentSupport);
     
 private:
+    void drawFrame();
+
     void createInstance();
     void setupDebugMessenger();
     void createSurface();
     void pickPhysicalDevice();
     void createLogicalDevice();
+
     void createSwapChain();
     void createImageViews();
+    void createRenderPass();
     void createGraphicsPipeline();
+    void createFrameBuffers();
+    void createCommandPool();
+    void createCommandBuffers();
+    void createSyncObjects();
+
+    void cleanupSwapChain();
+    void recreateSwapChain();
 
 };

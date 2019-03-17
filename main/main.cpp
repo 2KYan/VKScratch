@@ -24,8 +24,13 @@ Create and destroy a Vulkan surface on an SDL window.
 
 #include "vkRender.h"
 
-int main()
+void run()
 {
     vkRender render;
     render.run();
+}
+
+int main()
+{
+    run();
 }
