@@ -146,16 +146,55 @@ int vkRender::initVulkan()
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+
     createSwapChain();
     createImageViews();
     createRenderPass();
     createGraphicsPipeline();
     createFrameBuffers();
+
     createCommandPool();
+
     createCommandBuffers();
+
     createSyncObjects();
 
     return 0;
+}
+
+void vkRender::cleanupSwapChain()
+{
+    for (auto& swapChainBuffer : m_vulkan.swapChain.frameBuffers) {
+        swapChainBuffer.reset();
+        // m_vulkan.device->destroyFramebuffer(*swapChainBuffer);
+    }
+    for (size_t i = 0; i < m_vulkan.commandBuffers.size(); ++i) {
+        m_vulkan.commandBuffers[i].reset();
+    }
+
+    m_vulkan.pipeLine.reset();
+    m_vulkan.pipelineLayout.reset();
+    m_vulkan.renderPass.reset();
+
+    for (auto& imageView : m_vulkan.swapChain.views) {
+        imageView.reset();
+    }
+    m_vulkan.swapChain.swapChainKHR.reset();
+}
+
+void vkRender::recreateSwapChain()
+{
+    m_vulkan.device->waitIdle();
+
+    cleanupSwapChain();
+
+    createSwapChain();
+    createImageViews();
+    createRenderPass();
+    createGraphicsPipeline();
+    createFrameBuffers();
+
+    createCommandBuffers();
 }
 
 int vkRender::cleanup()
@@ -164,6 +203,44 @@ int vkRender::cleanup()
 
     SDL_DestroyWindow(m_vulkan.window);
     SDL_Quit();
+    return 0;
+}
+
+int vkRender::resizeWindow()
+{
+
+}
+
+int vkRender::mainLoop()
+{
+    bool stillRunning = true;
+    while (stillRunning) {
+
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+
+            switch (event.type) {
+            case SDL_WINDOWEVENT:
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                    resizeWindow();
+                }
+                break;
+
+            case SDL_QUIT:
+                stillRunning = false;
+                break;
+
+            default:
+                // Do nothing.
+                break;
+            }
+        }
+        drawFrame();
+
+        SDL_Delay(10);
+    }
+    m_vulkan.device->waitIdle();
+
     return 0;
 }
 
@@ -190,34 +267,6 @@ void vkRender::findQueueFamilies(bool presentSupport = true)
     }
 
     return;
-}
-
-int vkRender::mainLoop()
-{
-    bool stillRunning = true;
-    while (stillRunning) {
-
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-
-            switch (event.type) {
-
-            case SDL_QUIT:
-                stillRunning = false;
-                break;
-
-            default:
-                // Do nothing.
-                break;
-            }
-        }
-        drawFrame();
-
-        SDL_Delay(10);
-    }
-    m_vulkan.device->waitIdle();
-
-    return 0;
 }
 
 void vkRender::createInstance()
@@ -258,6 +307,7 @@ void vkRender::setupDebugMessenger()
         .setPfnUserCallback(debugCallback)
         .setPUserData(nullptr);
     m_vulkan.dbgMessenger = m_vulkan.instance->createDebugUtilsMessengerEXT(debugCreateInfo, nullptr, m_vulkan.dldi);
+    m_vulkan.udbgMessenger = m_vulkan.instance->createDebugUtilsMessengerEXTUnique(debugCreateInfo, nullptr, m_vulkan.dldi);
 }
 
 void vkRender::createSurface()
@@ -377,7 +427,7 @@ void vkRender::createSwapChain()
     }
 
     m_vulkan.swapChain.swapChainKHR = m_vulkan.device->createSwapchainKHRUnique(swapChainCreateInfo);
-    m_vulkan.swapChain.images = m_vulkan.device->getSwapchainImagesKHR(m_vulkan.swapChain.swapChainKHR.get());
+    m_vulkan.swapChain.images = m_vulkan.device->getSwapchainImagesKHR(*m_vulkan.swapChain.swapChainKHR);
     m_vulkan.swapChain.format = surfaceFormatKHR.format;
     m_vulkan.swapChain.extent = swapchainExtent;
 
@@ -385,13 +435,11 @@ void vkRender::createSwapChain()
 
 void vkRender::createImageViews()
 {
-    std::vector<vk::UniqueImageView> imageViews;
-    m_vulkan.swapChain.views.reserve(m_vulkan.swapChain.images.size());
     for (auto image : m_vulkan.swapChain.images) {
         vk::ComponentMapping componentMapping(vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eA);
         vk::ImageSubresourceRange subResourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
         vk::ImageViewCreateInfo imageViewCreateInfo(vk::ImageViewCreateFlags(), image, vk::ImageViewType::e2D, m_vulkan.swapChain.format, componentMapping, subResourceRange);
-        m_vulkan.swapChain.views.push_back(m_vulkan.device->createImageViewUnique(imageViewCreateInfo));
+        m_vulkan.swapChain.views.emplace_back(m_vulkan.device->createImageViewUnique(imageViewCreateInfo));
     }
 }
 
@@ -438,8 +486,8 @@ void vkRender::createGraphicsPipeline()
     auto fragShaderCreateInfo = vk::ShaderModuleCreateInfo{ {}, shaderSize, fragShaderCode.data() };
     auto fragShaderModule = m_vulkan.device->createShaderModuleUnique(fragShaderCreateInfo);
 
-    vk::PipelineShaderStageCreateInfo vertShaderStageInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eVertex,vertShaderModule.get(), "main");
-    vk::PipelineShaderStageCreateInfo fragShaderStageInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eFragment, fragShaderModule.get(), "main");
+    vk::PipelineShaderStageCreateInfo vertShaderStageInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eVertex,*vertShaderModule, "main");
+    vk::PipelineShaderStageCreateInfo fragShaderStageInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eFragment, *fragShaderModule, "main");
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
@@ -470,8 +518,8 @@ void vkRender::createGraphicsPipeline()
         .setPRasterizationState(&rasterizer)
         .setPMultisampleState(&multisampling)
         .setPColorBlendState(&colorBlending)
-        .setLayout(m_vulkan.pipelineLayout.get())
-        .setRenderPass(m_vulkan.renderPass.get())
+        .setLayout(*m_vulkan.pipelineLayout)
+        .setRenderPass(*m_vulkan.renderPass)
         .setSubpass(0)
         .setBasePipelineHandle(VK_NULL_HANDLE);
 
@@ -482,22 +530,22 @@ void vkRender::createGraphicsPipeline()
 
 void vkRender::createFrameBuffers()
 {
-    m_vulkan.swapChinaFrameBuffers.resize(m_vulkan.swapChain.views.size());
+    m_vulkan.swapChain.frameBuffers.resize(m_vulkan.swapChain.views.size());
 
     for (size_t i = 0; i < m_vulkan.swapChain.views.size(); ++i) {
         vk::ImageView attachments[] = {
-            m_vulkan.swapChain.views[i].get()
+            *m_vulkan.swapChain.views[i]
         };
 
         vk::FramebufferCreateInfo frameBufferInfo;
-        frameBufferInfo.setRenderPass(m_vulkan.renderPass.get())
+        frameBufferInfo.setRenderPass(*m_vulkan.renderPass)
             .setAttachmentCount(1)
             .setPAttachments(attachments)
             .setWidth(m_vulkan.swapChain.extent.width)
             .setHeight(m_vulkan.swapChain.extent.height)
             .setLayers(1);
 
-        m_vulkan.swapChinaFrameBuffers[i] = m_vulkan.device->createFramebufferUnique(frameBufferInfo);
+        m_vulkan.swapChain.frameBuffers[i] = m_vulkan.device->createFramebufferUnique(frameBufferInfo);
     }
 }
 
@@ -513,7 +561,7 @@ void vkRender::createCommandBuffers()
 {
     vk::CommandBufferAllocateInfo allocInfo;
     allocInfo.setCommandBufferCount(m_vulkan.swapChain.views.size())
-        .setCommandPool(m_vulkan.commandPool.get())
+        .setCommandPool(*m_vulkan.commandPool)
         .setLevel(vk::CommandBufferLevel::ePrimary);
 
     m_vulkan.commandBuffers = m_vulkan.device->allocateCommandBuffersUnique(allocInfo);
@@ -524,9 +572,9 @@ void vkRender::createCommandBuffers()
         vk::ClearValue clearValue;
         clearValue.color.float32[3] = 1.0;
         
-        vk::RenderPassBeginInfo rpBeginInfo(m_vulkan.renderPass.get(), m_vulkan.swapChinaFrameBuffers[i].get(),  renderArea, 1, &clearValue);
+        vk::RenderPassBeginInfo rpBeginInfo(*m_vulkan.renderPass, *m_vulkan.swapChain.frameBuffers[i],  renderArea, 1, &clearValue);
         m_vulkan.commandBuffers[i]->beginRenderPass(rpBeginInfo, vk::SubpassContents::eInline);
-        m_vulkan.commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, m_vulkan.pipeLine.get());
+        m_vulkan.commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_vulkan.pipeLine);
         m_vulkan.commandBuffers[i]->draw(3, 1, 0, 0);
         m_vulkan.commandBuffers[i]->endRenderPass();
 
@@ -551,51 +599,30 @@ void vkRender::createSyncObjects()
 
 void vkRender::drawFrame()
 {
-    m_vulkan.device->waitForFences(1, &m_vulkan.inFlightFences[m_currentFrame].get(), VK_TRUE, std::numeric_limits<uint32_t>::max());
-    m_vulkan.device->resetFences(1, &m_vulkan.inFlightFences[m_currentFrame].get());
+    m_vulkan.device->waitForFences(1, &*m_vulkan.inFlightFences[m_currentFrame], VK_TRUE, std::numeric_limits<uint32_t>::max());
+    m_vulkan.device->resetFences(1, &*m_vulkan.inFlightFences[m_currentFrame]);
 
-    auto imageIndex = m_vulkan.device->acquireNextImageKHR(m_vulkan.swapChain.swapChainKHR.get(), std::numeric_limits<uint32_t>::max(), m_vulkan.imageAvailableSemaphore[m_currentFrame].get(), VK_NULL_HANDLE);
+    auto imageIndex = m_vulkan.device->acquireNextImageKHR(*m_vulkan.swapChain.swapChainKHR, std::numeric_limits<uint32_t>::max(), *m_vulkan.imageAvailableSemaphore[m_currentFrame], VK_NULL_HANDLE);
 
     vk::SubmitInfo submitInfo;
     const vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
     submitInfo.setCommandBufferCount(1)
-        .setPCommandBuffers(&m_vulkan.commandBuffers[imageIndex.value].get())
+        .setPCommandBuffers(&*m_vulkan.commandBuffers[imageIndex.value])
         .setWaitSemaphoreCount(1)
-        .setPWaitSemaphores(&m_vulkan.imageAvailableSemaphore[m_currentFrame].get())
+        .setPWaitSemaphores(&*m_vulkan.imageAvailableSemaphore[m_currentFrame])
         .setPWaitDstStageMask(waitStages)
         .setSignalSemaphoreCount(1)
-        .setPSignalSemaphores(&m_vulkan.renderFinishedSemaphore[m_currentFrame].get());
-    m_vulkan.gQueue.queue.submit(1, &submitInfo, m_vulkan.inFlightFences[m_currentFrame].get());
+        .setPSignalSemaphores(&*m_vulkan.renderFinishedSemaphore[m_currentFrame]);
+    m_vulkan.gQueue.queue.submit(1, &submitInfo, *m_vulkan.inFlightFences[m_currentFrame]);
 
     vk::PresentInfoKHR presentInfo;
     presentInfo.setWaitSemaphoreCount(1)
-        .setPWaitSemaphores(&m_vulkan.renderFinishedSemaphore[m_currentFrame].get())
+        .setPWaitSemaphores(&*m_vulkan.renderFinishedSemaphore[m_currentFrame])
         .setSwapchainCount(1)
-        .setPSwapchains(&m_vulkan.swapChain.swapChainKHR.get())
+        .setPSwapchains(&*m_vulkan.swapChain.swapChainKHR)
         .setPImageIndices(&imageIndex.value);
     m_vulkan.pQueue.queue.presentKHR(&presentInfo);
 
     m_currentFrame = (m_currentFrame + 1) % m_max_frame_in_flight;
-}
-
-void vkRender::cleanupSwapChain()
-{
-    for (const auto& swapChainBuffer : m_vulkan.swapChinaFrameBuffers) {
-        m_vulkan.device->destroyFramebuffer(swapChainBuffer.get());
-    }
-}
-
-void vkRender::recreateSwapChain()
-{
-    m_vulkan.device->waitIdle();
-
-    cleanupSwapChain();
-
-    createSwapChain();
-    createImageViews();
-    createRenderPass();
-    createGraphicsPipeline();
-    createFrameBuffers();
-    createCommandBuffers();
 }
 

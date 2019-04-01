@@ -60,6 +60,7 @@ struct SwapChainParams
     vk::Format format;
     std::vector<vk::Image> images;
     std::vector<vk::UniqueImageView> views;
+    std::vector<vk::UniqueFramebuffer> frameBuffers;
     vk::Extent2D extent;
     vk::PresentInfoKHR presentMode;
     vk::ImageUsageFlags usageFlags;
@@ -67,6 +68,10 @@ struct SwapChainParams
 };
 
 struct SDL_Window;
+namespace vk
+{
+    using DUniqueDebugUtilsMessengerEXT = vk::UniqueHandle<vk::DebugUtilsMessengerEXT,vk::DispatchLoaderDynamic>;
+};
 
 struct CommonParams
 {
@@ -75,6 +80,7 @@ struct CommonParams
     vk::UniqueInstance instance;
 
     vk::DebugUtilsMessengerEXT dbgMessenger;
+    vk::DUniqueDebugUtilsMessengerEXT udbgMessenger;
     vk::SurfaceKHR surfaceKHR;
 
     vk::PhysicalDevice physicalDevice;
@@ -87,7 +93,6 @@ struct CommonParams
     vk::UniqueRenderPass renderPass;
     vk::UniquePipelineLayout pipelineLayout;
     vk::UniquePipeline pipeLine;
-    std::vector<vk::UniqueFramebuffer> swapChinaFrameBuffers;
 
     vk::UniqueCommandPool commandPool;
     std::vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -117,6 +122,7 @@ protected:
     int initVulkan();
     int mainLoop();
     int cleanup();
+    int resizeWindow();
 
 private:
     void findQueueFamilies(bool presentSupport);
