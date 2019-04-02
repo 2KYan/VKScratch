@@ -208,7 +208,7 @@ int vkRender::cleanup()
 
 int vkRender::resizeWindow()
 {
-
+    return 0;
 }
 
 int vkRender::mainLoop()
@@ -253,7 +253,7 @@ void vkRender::findQueueFamilies(bool presentSupport = true)
     m_vulkan.pQueue.familyIndex = -1;
     int pqIdx = -1;
     for (auto& qFamily : qFamilies) {
-        uint32_t qIdx = &qFamily - &qFamilies[0];
+        uint32_t qIdx = static_cast<uint32_t>(&qFamily - &qFamilies[0]);
         if (presentSupport && m_vulkan.physicalDevice.getSurfaceSupportKHR(qIdx, m_vulkan.surfaceKHR)) {
             m_vulkan.pQueue.familyIndex = qIdx;
         }
@@ -295,7 +295,7 @@ void vkRender::createInstance()
     .setPpEnabledLayerNames(layers.data());
     
     m_vulkan.instance = vk::createInstanceUnique(instInfo);
-    m_vulkan.dldi.init(*m_vulkan.instance);
+    m_vulkan.dldi.init(*m_vulkan.instance, vkGetInstanceProcAddr);
 }
 
 void vkRender::setupDebugMessenger()
@@ -510,7 +510,9 @@ void vkRender::createGraphicsPipeline()
     m_vulkan.pipelineLayout = m_vulkan.device->createPipelineLayoutUnique(pipelineLayoutInfo);
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo;
-    pipelineCreateInfo.setStageCount(2)
+    pipelineCreateInfo
+        .setBasePipelineHandle(vk::Pipeline())
+        .setStageCount(2)
         .setPStages(shaderStages)
         .setPVertexInputState(&vertexInputInfo)
         .setPInputAssemblyState(&inputAssembly)
@@ -520,10 +522,9 @@ void vkRender::createGraphicsPipeline()
         .setPColorBlendState(&colorBlending)
         .setLayout(*m_vulkan.pipelineLayout)
         .setRenderPass(*m_vulkan.renderPass)
-        .setSubpass(0)
-        .setBasePipelineHandle(VK_NULL_HANDLE);
+        .setSubpass(0);
 
-    m_vulkan.pipeLine = m_vulkan.device->createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineCreateInfo);
+    m_vulkan.pipeLine = m_vulkan.device->createGraphicsPipelineUnique(vk::PipelineCache(), pipelineCreateInfo);
 
 }
 
@@ -602,7 +603,7 @@ void vkRender::drawFrame()
     m_vulkan.device->waitForFences(1, &*m_vulkan.inFlightFences[m_currentFrame], VK_TRUE, std::numeric_limits<uint32_t>::max());
     m_vulkan.device->resetFences(1, &*m_vulkan.inFlightFences[m_currentFrame]);
 
-    auto imageIndex = m_vulkan.device->acquireNextImageKHR(*m_vulkan.swapChain.swapChainKHR, std::numeric_limits<uint32_t>::max(), *m_vulkan.imageAvailableSemaphore[m_currentFrame], VK_NULL_HANDLE);
+    auto imageIndex = m_vulkan.device->acquireNextImageKHR(*m_vulkan.swapChain.swapChainKHR, std::numeric_limits<uint32_t>::max(), *m_vulkan.imageAvailableSemaphore[m_currentFrame], vk::Fence());
 
     vk::SubmitInfo submitInfo;
     const vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
