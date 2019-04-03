@@ -122,7 +122,7 @@ protected:
     int initVulkan();
     int mainLoop();
     int cleanup();
-    int resizeWindow();
+    int resizeWindow(int32_t width, int32_t height);
 
 private:
     void findQueueFamilies(bool presentSupport);

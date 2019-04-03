@@ -179,6 +179,7 @@ void vkRender::cleanupSwapChain()
     for (auto& imageView : m_vulkan.swapChain.views) {
         imageView.reset();
     }
+    m_vulkan.swapChain.views.clear();
     m_vulkan.swapChain.swapChainKHR.reset();
 }
 
@@ -206,8 +207,12 @@ int vkRender::cleanup()
     return 0;
 }
 
-int vkRender::resizeWindow()
+int vkRender::resizeWindow(int32_t width, int32_t height)
 {
+    m_width = width;
+    m_height = height;
+    recreateSwapChain();
+
     return 0;
 }
 
@@ -222,7 +227,7 @@ int vkRender::mainLoop()
             switch (event.type) {
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                    resizeWindow();
+                    resizeWindow(event.window.data1, event.window.data2);
                 }
                 break;
 
@@ -413,8 +418,13 @@ void vkRender::createSwapChain()
         (swapchainSupportDetails.capabilities.supportedCompositeAlpha & vk::CompositeAlphaFlagBitsKHR::ePreMultiplied) ? vk::CompositeAlphaFlagBitsKHR::ePreMultiplied :
         (swapchainSupportDetails.capabilities.supportedCompositeAlpha & vk::CompositeAlphaFlagBitsKHR::ePostMultiplied) ? vk::CompositeAlphaFlagBitsKHR::ePostMultiplied :
         (swapchainSupportDetails.capabilities.supportedCompositeAlpha & vk::CompositeAlphaFlagBitsKHR::eInherit) ? vk::CompositeAlphaFlagBitsKHR::eInherit : vk::CompositeAlphaFlagBitsKHR::eOpaque;
+    
+    uint32_t imageCount = swapchainSupportDetails.capabilities.minImageCount;
+    if (swapchainSupportDetails.capabilities.maxImageCount > 0 && imageCount > swapchainSupportDetails.capabilities.maxImageCount) {
+        imageCount = swapchainSupportDetails.capabilities.maxImageCount;
+    }
 
-    vk::SwapchainCreateInfoKHR swapChainCreateInfo(vk::SwapchainCreateFlagsKHR(), m_vulkan.surfaceKHR, swapchainSupportDetails.capabilities.minImageCount, surfaceFormatKHR.format, surfaceFormatKHR.colorSpace,
+    vk::SwapchainCreateInfoKHR swapChainCreateInfo(vk::SwapchainCreateFlagsKHR(), m_vulkan.surfaceKHR, imageCount, surfaceFormatKHR.format, surfaceFormatKHR.colorSpace,
                                                    swapchainExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0, nullptr, preTransform, compositeAlpha, swapchainPresentMode, true, nullptr);
 
     if (m_vulkan.gQueue.familyIndex !=m_vulkan.pQueue.familyIndex) {
@@ -601,29 +611,38 @@ void vkRender::createSyncObjects()
 void vkRender::drawFrame()
 {
     m_vulkan.device->waitForFences(1, &*m_vulkan.inFlightFences[m_currentFrame], VK_TRUE, std::numeric_limits<uint32_t>::max());
-    m_vulkan.device->resetFences(1, &*m_vulkan.inFlightFences[m_currentFrame]);
 
-    auto imageIndex = m_vulkan.device->acquireNextImageKHR(*m_vulkan.swapChain.swapChainKHR, std::numeric_limits<uint32_t>::max(), *m_vulkan.imageAvailableSemaphore[m_currentFrame], vk::Fence());
+    try {
+        auto imageIndex = m_vulkan.device->acquireNextImageKHR(*m_vulkan.swapChain.swapChainKHR, std::numeric_limits<uint32_t>::max(), *m_vulkan.imageAvailableSemaphore[m_currentFrame], vk::Fence());
 
-    vk::SubmitInfo submitInfo;
-    const vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
-    submitInfo.setCommandBufferCount(1)
-        .setPCommandBuffers(&*m_vulkan.commandBuffers[imageIndex.value])
-        .setWaitSemaphoreCount(1)
-        .setPWaitSemaphores(&*m_vulkan.imageAvailableSemaphore[m_currentFrame])
-        .setPWaitDstStageMask(waitStages)
-        .setSignalSemaphoreCount(1)
-        .setPSignalSemaphores(&*m_vulkan.renderFinishedSemaphore[m_currentFrame]);
-    m_vulkan.gQueue.queue.submit(1, &submitInfo, *m_vulkan.inFlightFences[m_currentFrame]);
+        m_vulkan.device->resetFences(1, &*m_vulkan.inFlightFences[m_currentFrame]);
 
-    vk::PresentInfoKHR presentInfo;
-    presentInfo.setWaitSemaphoreCount(1)
-        .setPWaitSemaphores(&*m_vulkan.renderFinishedSemaphore[m_currentFrame])
-        .setSwapchainCount(1)
-        .setPSwapchains(&*m_vulkan.swapChain.swapChainKHR)
-        .setPImageIndices(&imageIndex.value);
-    m_vulkan.pQueue.queue.presentKHR(&presentInfo);
+        vk::SubmitInfo submitInfo;
+        const vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+        submitInfo.setCommandBufferCount(1)
+            .setPCommandBuffers(&*m_vulkan.commandBuffers[imageIndex.value])
+            .setWaitSemaphoreCount(1)
+            .setPWaitSemaphores(&*m_vulkan.imageAvailableSemaphore[m_currentFrame])
+            .setPWaitDstStageMask(waitStages)
+            .setSignalSemaphoreCount(1)
+            .setPSignalSemaphores(&*m_vulkan.renderFinishedSemaphore[m_currentFrame]);
+        m_vulkan.gQueue.queue.submit(1, &submitInfo, *m_vulkan.inFlightFences[m_currentFrame]);
 
-    m_currentFrame = (m_currentFrame + 1) % m_max_frame_in_flight;
+        vk::PresentInfoKHR presentInfo;
+        presentInfo.setWaitSemaphoreCount(1)
+            .setPWaitSemaphores(&*m_vulkan.renderFinishedSemaphore[m_currentFrame])
+            .setSwapchainCount(1)
+            .setPSwapchains(&*m_vulkan.swapChain.swapChainKHR)
+            .setPImageIndices(&imageIndex.value);
+        m_vulkan.pQueue.queue.presentKHR(&presentInfo);
+
+        m_currentFrame = (m_currentFrame + 1) % m_max_frame_in_flight;
+    } catch (vk::OutOfDateKHRError  e) {
+        recreateSwapChain();
+        return;
+    } catch (vk::SystemError e) {
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
+
 }
 
