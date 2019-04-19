@@ -15,6 +15,8 @@
 
 #include "shaderc/shaderc.hpp"
 
+#include "glm/glm.hpp"
+
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
@@ -102,7 +104,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
-
 vkRender::vkRender()
 {
 }
@@ -154,6 +155,7 @@ int vkRender::initVulkan()
     createFrameBuffers();
 
     createCommandPool();
+    createVertexBuffer();
 
     createCommandBuffers();
 
@@ -362,9 +364,9 @@ void vkRender::createLogicalDevice()
         dqCreateInfoArray.push_back(deviceQueueCreateInfo);
     }
 
-    vk::DeviceCreateInfo deviceCreateInfo = vk::DeviceCreateInfo(vk::DeviceCreateFlags(), dqCreateInfoArray.size(), dqCreateInfoArray.data());
+    vk::DeviceCreateInfo deviceCreateInfo = vk::DeviceCreateInfo(vk::DeviceCreateFlags(), static_cast<uint32_t>(dqCreateInfoArray.size()), dqCreateInfoArray.data());
     auto deviceExtensions = getDeviceExtensions();
-    deviceCreateInfo.setEnabledExtensionCount(deviceExtensions.size());
+    deviceCreateInfo.setEnabledExtensionCount(static_cast<uint32_t>(deviceExtensions.size()));
     deviceCreateInfo.setPpEnabledExtensionNames(deviceExtensions.data());
     m_vulkan.device = m_vulkan.physicalDevice.createDeviceUnique(deviceCreateInfo);
 
@@ -502,6 +504,9 @@ void vkRender::createGraphicsPipeline()
     vk::PipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
     vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+    vertexInputInfo.setVertexBindingDescriptionCount(1).setPVertexBindingDescriptions(&Vertex::getBindingDescription());
+    auto vtxAttrDesc = Vertex::getAttributeDescription();
+    vertexInputInfo.setVertexAttributeDescriptionCount(static_cast<uint32_t>(vtxAttrDesc.size())).setPVertexAttributeDescriptions(vtxAttrDesc.data());
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly(vk::PipelineInputAssemblyStateCreateFlags(), vk::PrimitiveTopology::eTriangleList);
 
     vk::Viewport viewport(0, 0, float(m_vulkan.swapChain.extent.width), float(m_vulkan.swapChain.extent.height), 0.0, 1.0);
@@ -568,10 +573,28 @@ void vkRender::createCommandPool()
 
 }
 
+void vkRender::createVertexBuffer()
+{
+    m_vulkan.vertices = {
+        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    };
+
+    vk::DeviceSize bufferSize = sizeof(Vertex) * m_vulkan.vertices.size();
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                 m_vulkan.vertexBuffer, m_vulkan.vertexBufferMemory);
+
+    auto data = m_vulkan.device->mapMemory(*m_vulkan.vertexBufferMemory, 0, bufferSize);
+    memcpy(data, m_vulkan.vertices.data(), bufferSize);
+    m_vulkan.device->unmapMemory(*m_vulkan.vertexBufferMemory);
+
+}
+
 void vkRender::createCommandBuffers() 
 {
     vk::CommandBufferAllocateInfo allocInfo;
-    allocInfo.setCommandBufferCount(m_vulkan.swapChain.views.size())
+    allocInfo.setCommandBufferCount(static_cast<uint32_t>(m_vulkan.swapChain.views.size()))
         .setCommandPool(*m_vulkan.commandPool)
         .setLevel(vk::CommandBufferLevel::ePrimary);
 
@@ -586,6 +609,8 @@ void vkRender::createCommandBuffers()
         vk::RenderPassBeginInfo rpBeginInfo(*m_vulkan.renderPass, *m_vulkan.swapChain.frameBuffers[i],  renderArea, 1, &clearValue);
         m_vulkan.commandBuffers[i]->beginRenderPass(rpBeginInfo, vk::SubpassContents::eInline);
         m_vulkan.commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_vulkan.pipeLine);
+        vk::DeviceSize offset =  0;
+        m_vulkan.commandBuffers[i]->bindVertexBuffers(0, 1, &*m_vulkan.vertexBuffer, &offset);
         m_vulkan.commandBuffers[i]->draw(3, 1, 0, 0);
         m_vulkan.commandBuffers[i]->endRenderPass();
 
@@ -646,3 +671,29 @@ void vkRender::drawFrame()
 
 }
 
+void vkRender::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory)
+{
+    vk::BufferCreateInfo bufferInfo;
+    bufferInfo.setSize(size).setUsage(usage).setSharingMode(vk::SharingMode::eExclusive);
+    buffer = m_vulkan.device->createBufferUnique(bufferInfo);
+
+    vk::MemoryRequirements memRequirements = m_vulkan.device->getBufferMemoryRequirements(*buffer);
+    vk::MemoryAllocateInfo allocInfo;
+    allocInfo.setAllocationSize(memRequirements.size).setMemoryTypeIndex(findMemoryType(memRequirements.memoryTypeBits, properties));
+    bufferMemory = m_vulkan.device->allocateMemoryUnique(allocInfo);
+    m_vulkan.device->bindBufferMemory(*buffer, *bufferMemory, 0);
+}
+
+uint32_t vkRender::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties)
+{
+    vk::PhysicalDeviceMemoryProperties memProperties = m_vulkan.physicalDevice.getMemoryProperties();
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+    throw std::runtime_error("failed to find suitable memory type");
+    
+
+}

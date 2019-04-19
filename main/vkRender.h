@@ -18,6 +18,29 @@
 #include <iostream>
 #include <vector>
 
+struct Vertex
+{
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription()
+    {
+        vk::VertexInputBindingDescription bindingDesc;
+        bindingDesc.setBinding(0).setInputRate(vk::VertexInputRate::eVertex).setStride(sizeof(Vertex));
+        
+        return bindingDesc;
+    }
+
+    static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescription()
+    {
+        std::array<vk::VertexInputAttributeDescription,2> attrDesc;
+        attrDesc[0].setBinding(0).setLocation(0).setOffset(offsetof(Vertex, pos)).setFormat(vk::Format::eR32G32Sfloat);
+        attrDesc[1].setBinding(0).setLocation(1).setOffset(offsetof(Vertex, color)).setFormat(vk::Format::eR32G32B32Sfloat);
+
+        return attrDesc;
+    }
+};
+
 struct QueueParams
 {
     vk::Queue queue;
@@ -100,6 +123,11 @@ struct CommonParams
     std::vector<vk::UniqueSemaphore> imageAvailableSemaphore;
     std::vector<vk::UniqueSemaphore> renderFinishedSemaphore;
     std::vector<vk::UniqueFence> inFlightFences;
+    
+    vk::UniqueBuffer vertexBuffer;
+    vk::UniqueDeviceMemory vertexBufferMemory;
+    
+    std::vector<Vertex> vertices;
 };
 
 class vkRender
@@ -142,10 +170,13 @@ private:
     void createGraphicsPipeline();
     void createFrameBuffers();
     void createCommandPool();
+    void createVertexBuffer();
     void createCommandBuffers();
     void createSyncObjects();
 
     void cleanupSwapChain();
     void recreateSwapChain();
 
+    void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
+    uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 };
