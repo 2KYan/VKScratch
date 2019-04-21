@@ -41,6 +41,13 @@ struct Vertex
     }
 };
 
+struct UniformBufferObject
+{
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+};
+
 struct QueueParams
 {
     vk::Queue queue;
@@ -126,8 +133,15 @@ struct CommonParams
     
     vk::UniqueBuffer vertexBuffer;
     vk::UniqueDeviceMemory vertexBufferMemory;
+
+    vk::UniqueBuffer indexBuffer;
+    vk::UniqueDeviceMemory indexBufferMemory;
+
+    //vk::UniqueBuffer stagingBuffer;
+    //vk::UniqueDeviceMemory stagingBufferMemory;
     
     std::vector<Vertex> vertices;
+    std::vector<uint16_t> indices;
 };
 
 class vkRender
@@ -171,6 +185,7 @@ private:
     void createFrameBuffers();
     void createCommandPool();
     void createVertexBuffer();
+    void createIndexBuffer();
     void createCommandBuffers();
     void createSyncObjects();
 
@@ -178,5 +193,6 @@ private:
     void recreateSwapChain();
 
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
+    void copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuffer, vk::DeviceSize size);
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 };

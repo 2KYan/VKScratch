@@ -156,6 +156,7 @@ int vkRender::initVulkan()
 
     createCommandPool();
     createVertexBuffer();
+    createIndexBuffer();
 
     createCommandBuffers();
 
@@ -576,19 +577,48 @@ void vkRender::createCommandPool()
 void vkRender::createVertexBuffer()
 {
     m_vulkan.vertices = {
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f,  0.5f}, {1.0f, 1.1f, 1.0f}},
     };
 
+
     vk::DeviceSize bufferSize = sizeof(Vertex) * m_vulkan.vertices.size();
-    createBuffer(bufferSize, vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+    vk::UniqueBuffer stagingBuffer;
+    vk::UniqueDeviceMemory stagingBufferMemory;
+
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                 stagingBuffer, stagingBufferMemory);
+
+    auto data = m_vulkan.device->mapMemory(*stagingBufferMemory, 0, bufferSize);
+    memcpy(data, m_vulkan.vertices.data(), bufferSize);
+    m_vulkan.device->unmapMemory(*stagingBufferMemory);
+
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal,
                  m_vulkan.vertexBuffer, m_vulkan.vertexBufferMemory);
 
-    auto data = m_vulkan.device->mapMemory(*m_vulkan.vertexBufferMemory, 0, bufferSize);
-    memcpy(data, m_vulkan.vertices.data(), bufferSize);
-    m_vulkan.device->unmapMemory(*m_vulkan.vertexBufferMemory);
+    copyBuffer(stagingBuffer, m_vulkan.vertexBuffer, bufferSize);
+}
 
+void vkRender::createIndexBuffer()
+{
+    m_vulkan.indices = { 0 , 1, 2, 2, 3, 0 };
+
+    vk::DeviceSize bufferSize = sizeof(uint16_t) * m_vulkan.indices.size();
+    vk::UniqueBuffer stagingBuffer;
+    vk::UniqueDeviceMemory stagingBufferMemory;
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                 stagingBuffer, stagingBufferMemory);
+
+    auto data = m_vulkan.device->mapMemory(*stagingBufferMemory, 0, bufferSize);
+    memcpy(data, m_vulkan.indices.data(), bufferSize);
+    m_vulkan.device->unmapMemory(*stagingBufferMemory);
+
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal,
+                 m_vulkan.indexBuffer, m_vulkan.indexBufferMemory);
+
+    copyBuffer(stagingBuffer, m_vulkan.indexBuffer, bufferSize);
 }
 
 void vkRender::createCommandBuffers() 
@@ -611,7 +641,8 @@ void vkRender::createCommandBuffers()
         m_vulkan.commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_vulkan.pipeLine);
         vk::DeviceSize offset =  0;
         m_vulkan.commandBuffers[i]->bindVertexBuffers(0, 1, &*m_vulkan.vertexBuffer, &offset);
-        m_vulkan.commandBuffers[i]->draw(3, 1, 0, 0);
+        m_vulkan.commandBuffers[i]->bindIndexBuffer(*m_vulkan.indexBuffer, offset, vk::IndexType::eUint16);
+        m_vulkan.commandBuffers[i]->drawIndexed(m_vulkan.indices.size(), 1, 0, 0, 0);
         m_vulkan.commandBuffers[i]->endRenderPass();
 
         m_vulkan.commandBuffers[i]->end();
@@ -669,6 +700,23 @@ void vkRender::drawFrame()
         throw std::runtime_error("failed to acquire swap chain image!");
     }
 
+}
+
+
+void vkRender::copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuffer, vk::DeviceSize size)
+{
+    vk::CommandBufferAllocateInfo allocInfo;
+    allocInfo.setLevel(vk::CommandBufferLevel::ePrimary).setCommandBufferCount(1).setCommandPool(*m_vulkan.commandPool);
+    auto commandBuffer = m_vulkan.device->allocateCommandBuffersUnique(allocInfo);
+    commandBuffer[0]->begin(vk::CommandBufferBeginInfo().setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+    commandBuffer[0]->copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy().setSize(size));
+    commandBuffer[0]->end();
+    
+    vk::SubmitInfo submitInfo;
+    submitInfo.setCommandBufferCount(1).setPCommandBuffers(&*commandBuffer[0]);
+
+    m_vulkan.gQueue.queue.submit(1, &submitInfo, nullptr);
+    m_vulkan.gQueue.queue.waitIdle();
 }
 
 void vkRender::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory)

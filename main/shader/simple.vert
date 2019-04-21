@@ -4,6 +4,9 @@ out gl_PerVertex {
     vec4 gl_Position;
 };
 
+layout(binding = 0) uniform UniformBufferObject{
+} ubo;
+
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec3 inColor;
 
