@@ -12,6 +12,7 @@
 // Tell SDL not to mess with main()
 #define SDL_MAIN_HANDLED
 
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
 
@@ -43,9 +44,10 @@ struct Vertex
 
 struct UniformBufferObject
 {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
+    glm::vec2 foo;
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
 };
 
 struct QueueParams
@@ -120,6 +122,7 @@ struct CommonParams
     QueueParams pQueue;
     SwapChainParams swapChain;
 
+    vk::UniqueDescriptorSetLayout descriptorsetLayout;
     vk::UniqueRenderPass renderPass;
     vk::UniquePipelineLayout pipelineLayout;
     vk::UniquePipeline pipeLine;
@@ -137,9 +140,14 @@ struct CommonParams
     vk::UniqueBuffer indexBuffer;
     vk::UniqueDeviceMemory indexBufferMemory;
 
+    std::vector<vk::UniqueBuffer> uniformBuffer;
+    std::vector<vk::UniqueDeviceMemory> uniformBufferMemory;
+
     //vk::UniqueBuffer stagingBuffer;
     //vk::UniqueDeviceMemory stagingBufferMemory;
-    
+    vk::UniqueDescriptorPool descriptorPool;
+    std::vector<vk::UniqueDescriptorSet> descriptorSets;
+   
     std::vector<Vertex> vertices;
     std::vector<uint16_t> indices;
 };
@@ -181,11 +189,16 @@ private:
     void createSwapChain();
     void createImageViews();
     void createRenderPass();
+    void createDescriptorSetLayout();
     void createGraphicsPipeline();
     void createFrameBuffers();
     void createCommandPool();
     void createVertexBuffer();
     void createIndexBuffer();
+    void createUniformBuffer();
+    void createDescriptorPool();
+    void createDescriptorSets();
+    void updateUniformBuffer(uint32_t index);
     void createCommandBuffers();
     void createSyncObjects();
 

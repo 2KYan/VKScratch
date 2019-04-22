@@ -10,12 +10,15 @@
 // Tell SDL not to mess with main()
 #define SDL_MAIN_HANDLED
 
+#include <chrono>
+
 #include "vkRender.h"
 #include "vku.h"
 
 #include "shaderc/shaderc.hpp"
 
 #include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
@@ -151,13 +154,16 @@ int vkRender::initVulkan()
     createSwapChain();
     createImageViews();
     createRenderPass();
+    createDescriptorSetLayout();
     createGraphicsPipeline();
     createFrameBuffers();
 
     createCommandPool();
     createVertexBuffer();
     createIndexBuffer();
-
+    createUniformBuffer();
+    createDescriptorPool();
+    createDescriptorSets();
     createCommandBuffers();
 
     createSyncObjects();
@@ -173,6 +179,9 @@ void vkRender::cleanupSwapChain()
     }
     for (size_t i = 0; i < m_vulkan.commandBuffers.size(); ++i) {
         m_vulkan.commandBuffers[i].reset();
+        m_vulkan.uniformBuffer[i].reset();
+        m_vulkan.uniformBufferMemory[i].reset();
+        m_vulkan.descriptorSets[i].reset();
     }
 
     m_vulkan.pipeLine.reset();
@@ -198,6 +207,9 @@ void vkRender::recreateSwapChain()
     createGraphicsPipeline();
     createFrameBuffers();
 
+    createUniformBuffer();
+    createDescriptorPool();
+    createDescriptorSets();
     createCommandBuffers();
 }
 
@@ -488,6 +500,20 @@ void vkRender::createRenderPass()
     m_vulkan.renderPass = m_vulkan.device->createRenderPassUnique(renderPassInfo);
 }
 
+void vkRender::createDescriptorSetLayout()
+{
+    vk::DescriptorSetLayoutBinding uboLaytoutBinding;
+    uboLaytoutBinding.setBinding(0)
+        .setDescriptorCount(1)
+        .setDescriptorType(vk::DescriptorType::eUniformBuffer)
+        .setStageFlags(vk::ShaderStageFlagBits::eVertex);
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo;
+    layoutInfo.setBindingCount(1).setPBindings(&uboLaytoutBinding);
+
+    m_vulkan.descriptorsetLayout = m_vulkan.device->createDescriptorSetLayoutUnique(layoutInfo);
+}
+
 void vkRender::createGraphicsPipeline()
 {
     size_t shaderSize;
@@ -523,6 +549,7 @@ void vkRender::createGraphicsPipeline()
     vk::PipelineColorBlendStateCreateInfo colorBlending(vk::PipelineColorBlendStateCreateFlags(), 0, vk::LogicOp::eCopy, 1, &colorBlendAttachment);
     
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+    pipelineLayoutInfo.setSetLayoutCount(1).setPSetLayouts(&*m_vulkan.descriptorsetLayout);
     m_vulkan.pipelineLayout = m_vulkan.device->createPipelineLayoutUnique(pipelineLayoutInfo);
 
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo;
@@ -621,6 +648,68 @@ void vkRender::createIndexBuffer()
     copyBuffer(stagingBuffer, m_vulkan.indexBuffer, bufferSize);
 }
 
+void vkRender::createUniformBuffer()
+{
+    vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+    size_t imageSize = m_vulkan.swapChain.images.size();
+    m_vulkan.uniformBuffer.resize(imageSize);
+    m_vulkan.uniformBufferMemory.resize(imageSize);
+
+    for (size_t i = 0; i < imageSize; ++i) {
+        createBuffer(bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                     m_vulkan.uniformBuffer[i], m_vulkan.uniformBufferMemory[i]);
+    }
+    
+}
+
+void vkRender::createDescriptorPool()
+{
+    uint32_t maxPoolSize = static_cast<uint32_t>(m_vulkan.swapChain.images.size());
+    vk::DescriptorPoolSize poolSize;
+    poolSize.setType(vk::DescriptorType::eUniformBuffer).setDescriptorCount(maxPoolSize);
+
+    vk::DescriptorPoolCreateInfo poolInfo;
+    poolInfo.setPoolSizeCount(1).setPPoolSizes(&poolSize).setMaxSets(maxPoolSize).setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
+
+    m_vulkan.descriptorPool = m_vulkan.device->createDescriptorPoolUnique(poolInfo);
+}
+
+void vkRender::createDescriptorSets()
+{
+    uint32_t maxSetSize = static_cast<uint32_t>(m_vulkan.swapChain.images.size());
+    std::vector<vk::DescriptorSetLayout> layouts(m_vulkan.swapChain.images.size(), *m_vulkan.descriptorsetLayout);
+    vk::DescriptorSetAllocateInfo allocInfo;
+    allocInfo.setDescriptorPool(*m_vulkan.descriptorPool).setDescriptorSetCount(maxSetSize).setPSetLayouts(layouts.data());
+
+    m_vulkan.descriptorSets = m_vulkan.device->allocateDescriptorSetsUnique(allocInfo);
+
+    for (uint32_t i = 0; i < maxSetSize; ++i) {
+        vk::DescriptorBufferInfo bufferInfo;
+        bufferInfo.setBuffer(*m_vulkan.uniformBuffer[i]).setRange(sizeof(UniformBufferObject));
+        vk::WriteDescriptorSet descriptorWrite;
+        descriptorWrite.setDstSet(*m_vulkan.descriptorSets[i]).setDescriptorType(vk::DescriptorType::eUniformBuffer).setDescriptorCount(1).setPBufferInfo(&bufferInfo);
+        m_vulkan.device->updateDescriptorSets(descriptorWrite, nullptr);
+    }
+}
+
+void vkRender::updateUniformBuffer(uint32_t index)
+{
+    static auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    
+    UniformBufferObject ubo;
+    ubo.model = glm::rotate(glm::mat4(1.0), time*glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), m_vulkan.swapChain.extent.width / float(m_vulkan.swapChain.extent.height), 0.1f, 10.0f);
+    ubo.proj[1][1] = -1;
+
+    auto data = m_vulkan.device->mapMemory(*m_vulkan.uniformBufferMemory[index], 0, sizeof(ubo));
+    memcpy(data, &ubo, sizeof(ubo));
+    m_vulkan.device->unmapMemory(*m_vulkan.uniformBufferMemory[index]);
+}
+
 void vkRender::createCommandBuffers() 
 {
     vk::CommandBufferAllocateInfo allocInfo;
@@ -642,7 +731,9 @@ void vkRender::createCommandBuffers()
         vk::DeviceSize offset =  0;
         m_vulkan.commandBuffers[i]->bindVertexBuffers(0, 1, &*m_vulkan.vertexBuffer, &offset);
         m_vulkan.commandBuffers[i]->bindIndexBuffer(*m_vulkan.indexBuffer, offset, vk::IndexType::eUint16);
-        m_vulkan.commandBuffers[i]->drawIndexed(m_vulkan.indices.size(), 1, 0, 0, 0);
+        uint32_t dynamic_offset = 0;
+        m_vulkan.commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *m_vulkan.pipelineLayout, 0, *m_vulkan.descriptorSets[i], nullptr);
+        m_vulkan.commandBuffers[i]->drawIndexed(static_cast<uint32_t>(m_vulkan.indices.size()), 1, 0, 0, 0);
         m_vulkan.commandBuffers[i]->endRenderPass();
 
         m_vulkan.commandBuffers[i]->end();
@@ -672,6 +763,8 @@ void vkRender::drawFrame()
         auto imageIndex = m_vulkan.device->acquireNextImageKHR(*m_vulkan.swapChain.swapChainKHR, std::numeric_limits<uint32_t>::max(), *m_vulkan.imageAvailableSemaphore[m_currentFrame], vk::Fence());
 
         m_vulkan.device->resetFences(1, &*m_vulkan.inFlightFences[m_currentFrame]);
+
+        updateUniformBuffer(imageIndex.value);
 
         vk::SubmitInfo submitInfo;
         const vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
