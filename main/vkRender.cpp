@@ -15,6 +15,9 @@
 #include "vkRender.h"
 #include "vku.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #include "shaderc/shaderc.hpp"
 
 #include "glm/glm.hpp"
@@ -23,6 +26,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
+
+#include "spdlog/spdlog.h"
 
 #undef max
 #undef min
@@ -159,6 +164,7 @@ int vkRender::initVulkan()
     createFrameBuffers();
 
     createCommandPool();
+    createTextureImage();
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffer();
@@ -601,6 +607,33 @@ void vkRender::createCommandPool()
 
 }
 
+void vkRender::createTextureImage()
+{
+    std::string texName = "texture.jpg";
+    int texWidth, texHeight, texChannel;
+    std::string fname = vku::instance()->getTextureFileName(texName.c_str());
+    if (fname.empty()) {
+        spdlog::critical("Cant find texture {}", texName);
+    }
+    stbi_uc* pixels = stbi_load(fname.c_str(), &texWidth, &texHeight, &texChannel, STBI_rgb_alpha);
+    if (!pixels) {
+        throw std::runtime_error("failed to load texture image");
+    }
+    vk::DeviceSize imageSize = texWidth * texHeight * 4;
+    vk::UniqueBuffer stagingBuffer;
+    vk::UniqueDeviceMemory stagingBufferMemory;
+
+    createBuffer(imageSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                 stagingBuffer, stagingBufferMemory);
+    auto data = m_vulkan.device->mapMemory(*stagingBufferMemory, 0, imageSize);
+    memcpy(data, pixels, imageSize);
+    m_vulkan.device->unmapMemory(*stagingBufferMemory);
+    stbi_image_free(pixels);
+
+    createImage(texWidth, texHeight, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst| vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, m_vulkan.textureImage, m_vulkan.textureImageMemory);
+
+}
+
 void vkRender::createVertexBuffer()
 {
     m_vulkan.vertices = {
@@ -795,21 +828,99 @@ void vkRender::drawFrame()
 
 }
 
-
-void vkRender::copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuffer, vk::DeviceSize size)
+std::vector<vk::UniqueCommandBuffer> vkRender::beginSimleTileCommands()
 {
     vk::CommandBufferAllocateInfo allocInfo;
     allocInfo.setLevel(vk::CommandBufferLevel::ePrimary).setCommandBufferCount(1).setCommandPool(*m_vulkan.commandPool);
-    auto commandBuffer = m_vulkan.device->allocateCommandBuffersUnique(allocInfo);
-    commandBuffer[0]->begin(vk::CommandBufferBeginInfo().setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-    commandBuffer[0]->copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy().setSize(size));
-    commandBuffer[0]->end();
-    
+    auto commandBuffers = m_vulkan.device->allocateCommandBuffersUnique(allocInfo);
+    commandBuffers[0]->begin(vk::CommandBufferBeginInfo().setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
+    return commandBuffers;
+}
+
+void vkRender::endSimleTileCommands(std::vector<vk::UniqueCommandBuffer>& commandBuffers)
+{
+    commandBuffers[0]->end();
+
     vk::SubmitInfo submitInfo;
-    submitInfo.setCommandBufferCount(1).setPCommandBuffers(&*commandBuffer[0]);
+    submitInfo.setCommandBufferCount(1).setPCommandBuffers(&*commandBuffers[0]);
 
     m_vulkan.gQueue.queue.submit(1, &submitInfo, nullptr);
     m_vulkan.gQueue.queue.waitIdle();
+}
+
+template <typename... Args>
+void vkRender::submit(void (vkRender::*func)(Args...), Args... args)
+{
+    
+}
+
+void vkRender::transitionImageLayout(vk::UniqueImage& image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout)
+{
+    auto commandBuffers = beginSimleTileCommands();
+
+    vk::ImageSubresourceRange range;
+    range.setAspectMask(vk::ImageAspectFlagBits::eColor).setLayerCount(1).setLevelCount(1);
+
+    vk::ImageMemoryBarrier barrier;
+    barrier.setSubresourceRange(range).setOldLayout(oldLayout).setNewLayout(newLayout).setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED).setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+    barrier.setImage(*image);
+
+    vk::PipelineStageFlags srcStage;
+    vk::PipelineStageFlags dstStage;
+
+    if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eTransferDstOptimal) {
+        barrier.setDstAccessMask(vk::AccessFlagBits::eTransferWrite);
+        srcStage = vk::PipelineStageFlagBits::eTopOfPipe;
+        dstStage = vk::PipelineStageFlagBits::eTransfer;
+    } else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+        barrier.setDstAccessMask(vk::AccessFlagBits::eShaderRead).setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
+        srcStage = vk::PipelineStageFlagBits::eTransfer;
+        dstStage = vk::PipelineStageFlagBits::eFragmentShader;
+    } else {
+        throw std::invalid_argument("Unsupported layout transition");
+    }
+
+    vk::DependencyFlags flag;
+    commandBuffers[0]->pipelineBarrier(srcStage, dstStage, flag, nullptr, nullptr, barrier);
+
+    endSimleTileCommands(commandBuffers);
+}
+
+void vkRender::copyBufferToImage(vk::UniqueBuffer& buffer, vk::UniqueImage& image, uint32_t width, uint32_t height)
+{
+    auto commandBuffers = beginSimleTileCommands();
+
+    vk::ImageSubresourceLayers subResourceLayers;
+    subResourceLayers.setLayerCount(1);
+    vk::BufferImageCopy region;
+    region.setImageSubresource(subResourceLayers).setImageExtent(vk::Extent3D(width, height, 1));
+    commandBuffers[0]->copyBufferToImage(*buffer, *image, vk::ImageLayout::eTransferDstOptimal, region);
+
+    endSimleTileCommands(commandBuffers);
+}
+
+void vkRender::copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuffer, vk::DeviceSize size)
+{
+    auto commandBuffers = beginSimleTileCommands();
+    commandBuffers[0]->copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy().setSize(size));
+    endSimleTileCommands(commandBuffers);
+}
+
+void vkRender::createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory)
+{
+    vk::ImageCreateInfo imageInfo;
+    imageInfo.setImageType(vk::ImageType::e2D).setExtent(vk::Extent3D(width, height, 1)).setMipLevels(1).setArrayLayers(1)
+        .setFormat(format).setTiling(tiling).setInitialLayout(vk::ImageLayout::eUndefined).setUsage(usage).setSharingMode(vk::SharingMode::eExclusive)
+        .setSamples(vk::SampleCountFlagBits::e1);
+
+    image = m_vulkan.device->createImageUnique(imageInfo);
+
+    vk::MemoryRequirements memRequirements = m_vulkan.device->getImageMemoryRequirements(*image);
+    vk::MemoryAllocateInfo allocInfo;
+    allocInfo.setAllocationSize(memRequirements.size).setMemoryTypeIndex(findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    imageMemory = m_vulkan.device->allocateMemoryUnique(allocInfo);
+    m_vulkan.device->bindImageMemory(*image, *imageMemory, 0);
 }
 
 void vkRender::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory)

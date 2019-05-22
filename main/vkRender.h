@@ -143,10 +143,11 @@ struct CommonParams
     std::vector<vk::UniqueBuffer> uniformBuffer;
     std::vector<vk::UniqueDeviceMemory> uniformBufferMemory;
 
-    //vk::UniqueBuffer stagingBuffer;
-    //vk::UniqueDeviceMemory stagingBufferMemory;
     vk::UniqueDescriptorPool descriptorPool;
     std::vector<vk::UniqueDescriptorSet> descriptorSets;
+
+    vk::UniqueImage textureImage;
+    vk::UniqueDeviceMemory textureImageMemory;
    
     std::vector<Vertex> vertices;
     std::vector<uint16_t> indices;
@@ -179,6 +180,7 @@ private:
     
 private:
     void drawFrame();
+    void updateUniformBuffer(uint32_t index);
 
     void createInstance();
     void setupDebugMessenger();
@@ -193,19 +195,27 @@ private:
     void createGraphicsPipeline();
     void createFrameBuffers();
     void createCommandPool();
+    void createTextureImage();
     void createVertexBuffer();
     void createIndexBuffer();
     void createUniformBuffer();
     void createDescriptorPool();
     void createDescriptorSets();
-    void updateUniformBuffer(uint32_t index);
     void createCommandBuffers();
     void createSyncObjects();
 
     void cleanupSwapChain();
     void recreateSwapChain();
 
+    template <typename... Args>
+    void submit(void (vkRender::*func)(Args...), Args... args);
+
+    std::vector<vk::UniqueCommandBuffer> beginSimleTileCommands();
+    void endSimleTileCommands(std::vector<vk::UniqueCommandBuffer>& commandBuffers);
+    void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory);
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
+    void transitionImageLayout(vk::UniqueImage& image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
+    void copyBufferToImage(vk::UniqueBuffer& buffer, vk::UniqueImage& image, uint32_t width, uint32_t height);
     void copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuffer, vk::DeviceSize size);
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 };
