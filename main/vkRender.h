@@ -23,6 +23,7 @@ struct Vertex
 {
     glm::vec2 pos;
     glm::vec3 color;
+    glm::vec2 texCoord;
 
     static vk::VertexInputBindingDescription getBindingDescription()
     {
@@ -32,11 +33,12 @@ struct Vertex
         return bindingDesc;
     }
 
-    static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescription()
+    static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescription()
     {
-        std::array<vk::VertexInputAttributeDescription,2> attrDesc;
+        std::array<vk::VertexInputAttributeDescription, 3> attrDesc;
         attrDesc[0].setBinding(0).setLocation(0).setOffset(offsetof(Vertex, pos)).setFormat(vk::Format::eR32G32Sfloat);
         attrDesc[1].setBinding(0).setLocation(1).setOffset(offsetof(Vertex, color)).setFormat(vk::Format::eR32G32B32Sfloat);
+        attrDesc[2].setBinding(0).setLocation(2).setOffset(offsetof(Vertex, texCoord)).setFormat(vk::Format::eR32G32Sfloat);
 
         return attrDesc;
     }
@@ -147,6 +149,8 @@ struct CommonParams
     std::vector<vk::UniqueDescriptorSet> descriptorSets;
 
     vk::UniqueImage textureImage;
+    vk::UniqueImageView textureImageView;
+    vk::UniqueSampler textureSampler;
     vk::UniqueDeviceMemory textureImageMemory;
    
     std::vector<Vertex> vertices;
@@ -196,6 +200,8 @@ private:
     void createFrameBuffers();
     void createCommandPool();
     void createTextureImage();
+    void createTextureImageView();
+    void createTextureSampler();
     void createVertexBuffer();
     void createIndexBuffer();
     void createUniformBuffer();
@@ -210,12 +216,18 @@ private:
     template <typename... Args>
     void submit(void (vkRender::*func)(Args...), Args... args);
 
+protected:
     std::vector<vk::UniqueCommandBuffer> beginSimleTileCommands();
     void endSimleTileCommands(std::vector<vk::UniqueCommandBuffer>& commandBuffers);
+
     void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory);
-    void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
+    vk::UniqueImageView createImageView(vk::Image& image, vk::Format format);
+
     void transitionImageLayout(vk::UniqueImage& image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
+
+    void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
     void copyBufferToImage(vk::UniqueBuffer& buffer, vk::UniqueImage& image, uint32_t width, uint32_t height);
     void copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuffer, vk::DeviceSize size);
+
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 };

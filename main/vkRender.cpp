@@ -165,6 +165,8 @@ int vkRender::initVulkan()
 
     createCommandPool();
     createTextureImage();
+    createTextureImageView();
+    createTextureSampler();
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffer();
@@ -466,11 +468,12 @@ void vkRender::createSwapChain()
 
 void vkRender::createImageViews()
 {
+    vk::ComponentMapping componentMapping(vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eA);
     for (auto image : m_vulkan.swapChain.images) {
-        vk::ComponentMapping componentMapping(vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eA);
         vk::ImageSubresourceRange subResourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
         vk::ImageViewCreateInfo imageViewCreateInfo(vk::ImageViewCreateFlags(), image, vk::ImageViewType::e2D, m_vulkan.swapChain.format, componentMapping, subResourceRange);
-        m_vulkan.swapChain.views.emplace_back(m_vulkan.device->createImageViewUnique(imageViewCreateInfo));
+        //m_vulkan.swapChain.views.emplace_back(m_vulkan.device->createImageViewUnique(imageViewCreateInfo));
+        m_vulkan.swapChain.views.emplace_back(createImageView(image, m_vulkan.swapChain.format));
     }
 }
 
@@ -508,14 +511,23 @@ void vkRender::createRenderPass()
 
 void vkRender::createDescriptorSetLayout()
 {
+
     vk::DescriptorSetLayoutBinding uboLaytoutBinding;
     uboLaytoutBinding.setBinding(0)
         .setDescriptorCount(1)
         .setDescriptorType(vk::DescriptorType::eUniformBuffer)
         .setStageFlags(vk::ShaderStageFlagBits::eVertex);
 
+    vk::DescriptorSetLayoutBinding samplerLayoutBinding;
+    samplerLayoutBinding.setBinding(1)
+        .setDescriptorCount(1)
+        .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+        .setStageFlags(vk::ShaderStageFlagBits::eFragment);
+
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings = { uboLaytoutBinding, samplerLayoutBinding };
+
     vk::DescriptorSetLayoutCreateInfo layoutInfo;
-    layoutInfo.setBindingCount(1).setPBindings(&uboLaytoutBinding);
+    layoutInfo.setBindingCount(bindings.size()).setPBindings(bindings.data());
 
     m_vulkan.descriptorsetLayout = m_vulkan.device->createDescriptorSetLayoutUnique(layoutInfo);
 }
@@ -632,15 +644,57 @@ void vkRender::createTextureImage()
 
     createImage(texWidth, texHeight, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst| vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, m_vulkan.textureImage, m_vulkan.textureImageMemory);
 
+    transitionImageLayout(m_vulkan.textureImage, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+    copyBufferToImage(stagingBuffer, m_vulkan.textureImage, texWidth, texHeight);
+    transitionImageLayout(m_vulkan.textureImage, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+}
+
+vk::UniqueImageView vkRender::createImageView(vk::Image& image, vk::Format format)
+{
+    vk::ImageViewCreateInfo viewInfo;
+    viewInfo.setImage(image).setFormat(format).setViewType(vk::ImageViewType::e2D);
+    vk::ImageSubresourceRange subResourceRange;
+    subResourceRange.setAspectMask(vk::ImageAspectFlagBits::eColor).setLayerCount(1).setLevelCount(1);
+    viewInfo.setSubresourceRange(subResourceRange);
+
+    return m_vulkan.device->createImageViewUnique(viewInfo);
+}
+
+void vkRender::createTextureImageView()
+{
+    m_vulkan.textureImageView = createImageView(*m_vulkan.textureImage, vk::Format::eR8G8B8A8Unorm);
+}
+
+void vkRender::createTextureSampler()
+{
+    vk::SamplerCreateInfo samplerInfo;
+    samplerInfo.setMinFilter(vk::Filter::eLinear)
+        .setMagFilter(vk::Filter::eLinear)
+        .setAddressModeU(vk::SamplerAddressMode::eRepeat)
+        .setAddressModeV(vk::SamplerAddressMode::eRepeat)
+        .setAddressModeW(vk::SamplerAddressMode::eRepeat)
+        .setAnisotropyEnable(1)
+        .setMaxAnisotropy(16)
+        .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+        .setCompareEnable(0)
+        .setCompareOp(vk::CompareOp::eAlways)
+        .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+        .setMipLodBias(0.0f)
+        .setMinLod(0.0f)
+        .setMaxLod(0.0f);
+
+    m_vulkan.textureSampler = m_vulkan.device->createSamplerUnique(samplerInfo);
+
 }
 
 void vkRender::createVertexBuffer()
 {
     m_vulkan.vertices = {
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
-        {{-0.5f,  0.5f}, {1.0f, 1.1f, 1.0f}},
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+        {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+        {{-0.5f,  0.5f}, {1.0f, 1.1f, 1.0f}, {1.0f, 1.0f}},
     };
 
 
@@ -698,11 +752,12 @@ void vkRender::createUniformBuffer()
 void vkRender::createDescriptorPool()
 {
     uint32_t maxPoolSize = static_cast<uint32_t>(m_vulkan.swapChain.images.size());
-    vk::DescriptorPoolSize poolSize;
-    poolSize.setType(vk::DescriptorType::eUniformBuffer).setDescriptorCount(maxPoolSize);
+    std::array<vk::DescriptorPoolSize, 2> poolSize;
+    poolSize[0].setType(vk::DescriptorType::eUniformBuffer).setDescriptorCount(maxPoolSize);
+    poolSize[1].setType(vk::DescriptorType::eCombinedImageSampler).setDescriptorCount(maxPoolSize);
 
     vk::DescriptorPoolCreateInfo poolInfo;
-    poolInfo.setPoolSizeCount(1).setPPoolSizes(&poolSize).setMaxSets(maxPoolSize).setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
+    poolInfo.setPoolSizeCount(poolSize.size()).setPPoolSizes(poolSize.data()).setMaxSets(maxPoolSize).setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
 
     m_vulkan.descriptorPool = m_vulkan.device->createDescriptorPoolUnique(poolInfo);
 }
@@ -719,8 +774,12 @@ void vkRender::createDescriptorSets()
     for (uint32_t i = 0; i < maxSetSize; ++i) {
         vk::DescriptorBufferInfo bufferInfo;
         bufferInfo.setBuffer(*m_vulkan.uniformBuffer[i]).setRange(sizeof(UniformBufferObject));
-        vk::WriteDescriptorSet descriptorWrite;
-        descriptorWrite.setDstSet(*m_vulkan.descriptorSets[i]).setDescriptorType(vk::DescriptorType::eUniformBuffer).setDescriptorCount(1).setPBufferInfo(&bufferInfo);
+        vk::DescriptorImageInfo imageInfo;
+        imageInfo.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal).setImageView(*m_vulkan.textureImageView).setSampler(*m_vulkan.textureSampler);
+
+        std::array<vk::WriteDescriptorSet, 2> descriptorWrite;
+        descriptorWrite[0].setDstSet(*m_vulkan.descriptorSets[i]).setDstBinding(0).setDescriptorType(vk::DescriptorType::eUniformBuffer).setDescriptorCount(1).setPBufferInfo(&bufferInfo);
+        descriptorWrite[1].setDstSet(*m_vulkan.descriptorSets[i]).setDstBinding(1).setDescriptorType(vk::DescriptorType::eCombinedImageSampler).setDescriptorCount(1).setPImageInfo(&imageInfo);
         m_vulkan.device->updateDescriptorSets(descriptorWrite, nullptr);
     }
 }
@@ -731,6 +790,10 @@ void vkRender::updateUniformBuffer(uint32_t index)
 
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    
+    if (m_vulkan.swapChain.extent.height == 0) {
+        return;
+    }
     
     UniformBufferObject ubo;
     ubo.model = glm::rotate(glm::mat4(1.0), time*glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -892,7 +955,7 @@ void vkRender::copyBufferToImage(vk::UniqueBuffer& buffer, vk::UniqueImage& imag
     auto commandBuffers = beginSimleTileCommands();
 
     vk::ImageSubresourceLayers subResourceLayers;
-    subResourceLayers.setLayerCount(1);
+    subResourceLayers.setAspectMask(vk::ImageAspectFlagBits::eColor).setLayerCount(1);
     vk::BufferImageCopy region;
     region.setImageSubresource(subResourceLayers).setImageExtent(vk::Extent3D(width, height, 1));
     commandBuffers[0]->copyBufferToImage(*buffer, *image, vk::ImageLayout::eTransferDstOptimal, region);
