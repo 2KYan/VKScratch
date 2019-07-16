@@ -13,7 +13,11 @@
 #define SDL_MAIN_HANDLED
 
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-#include <glm/glm.hpp>
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+
 #include <vulkan/vulkan.hpp>
 
 #include <iostream>
@@ -21,7 +25,7 @@
 
 struct Vertex
 {
-    glm::vec2 pos;
+    glm::vec3 pos;
     glm::vec3 color;
     glm::vec2 texCoord;
 
@@ -36,7 +40,7 @@ struct Vertex
     static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescription()
     {
         std::array<vk::VertexInputAttributeDescription, 3> attrDesc;
-        attrDesc[0].setBinding(0).setLocation(0).setOffset(offsetof(Vertex, pos)).setFormat(vk::Format::eR32G32Sfloat);
+        attrDesc[0].setBinding(0).setLocation(0).setOffset(offsetof(Vertex, pos)).setFormat(vk::Format::eR32G32B32Sfloat);
         attrDesc[1].setBinding(0).setLocation(1).setOffset(offsetof(Vertex, color)).setFormat(vk::Format::eR32G32B32Sfloat);
         attrDesc[2].setBinding(0).setLocation(2).setOffset(offsetof(Vertex, texCoord)).setFormat(vk::Format::eR32G32Sfloat);
 
@@ -148,10 +152,14 @@ struct CommonParams
     vk::UniqueDescriptorPool descriptorPool;
     std::vector<vk::UniqueDescriptorSet> descriptorSets;
 
+    vk::UniqueImage depthImage;
+    vk::UniqueImageView depthImageView;
+    vk::UniqueDeviceMemory depthImageMemory;
+
     vk::UniqueImage textureImage;
     vk::UniqueImageView textureImageView;
-    vk::UniqueSampler textureSampler;
     vk::UniqueDeviceMemory textureImageMemory;
+    vk::UniqueSampler textureSampler;
    
     std::vector<Vertex> vertices;
     std::vector<uint16_t> indices;
@@ -198,16 +206,21 @@ private:
     void createDescriptorSetLayout();
     void createGraphicsPipeline();
     void createFrameBuffers();
+
     void createCommandPool();
+    void createDepthResources();
     void createTextureImage();
     void createTextureImageView();
     void createTextureSampler();
     void createVertexBuffer();
     void createIndexBuffer();
+
     void createUniformBuffer();
+
     void createDescriptorPool();
     void createDescriptorSets();
     void createCommandBuffers();
+
     void createSyncObjects();
 
     void cleanupSwapChain();
@@ -220,14 +233,17 @@ protected:
     std::vector<vk::UniqueCommandBuffer> beginSimleTileCommands();
     void endSimleTileCommands(std::vector<vk::UniqueCommandBuffer>& commandBuffers);
 
-    void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory);
-    vk::UniqueImageView createImageView(vk::Image& image, vk::Format format);
-
     void transitionImageLayout(vk::UniqueImage& image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
 
-    void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
+    void utilCreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
+    void utilCreateImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory);
+    vk::UniqueImageView utilCreateImageView(vk::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags);
+
     void copyBufferToImage(vk::UniqueBuffer& buffer, vk::UniqueImage& image, uint32_t width, uint32_t height);
     void copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuffer, vk::DeviceSize size);
 
+    vk::Format findDepthFormat();
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
+    vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
+    bool hasStencilComponent(vk::Format format);
 };

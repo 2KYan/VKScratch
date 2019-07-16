@@ -36,6 +36,7 @@ class vku {
     enum class ResourceType {
         SHADER = 0,
         TEXTURE,
+        MODEL,
         NUM_RESOURCES,
     };
 public:
@@ -44,6 +45,7 @@ public:
 
     std::string getShaderFileName(const char* fileName);
     std::string getTextureFileName(const char* fileName);
+    std::string getModelFileName(const char* fileName);
     int execCmd(std::string & cmd);
     void* glslRead(const char* fileName, size_t& size);
     std::vector<uint32_t> glslCompile(const char* fileName, size_t& size, int shader_type);

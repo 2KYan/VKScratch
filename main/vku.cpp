@@ -75,7 +75,7 @@ int vku::initResPaths()
 {
     char* envPath = nullptr;
     std::vector<std::string> paths = { "./" };
-    std::vector<std::string> resourceTypeStrings = { "shader/", "texture/" };
+    std::vector<std::string> resourceTypeStrings = { "shader/", "texture/", "model/"};
 
     std::unordered_map<std::string, std::string> envPaths = {
         { "DEV_HOME", "/data/"},
@@ -115,12 +115,19 @@ int vku::numResPaths()
     return numPaths;
 }
 
-std::string vku::getShaderFileName(const char* fileName) {
+std::string vku::getShaderFileName(const char* fileName) 
+{
     return getResourceFileName(fileName, ResourceType::SHADER);
 }
 
-std::string vku::getTextureFileName(const char* fileName) {
+std::string vku::getTextureFileName(const char* fileName) 
+{
     return getResourceFileName(fileName, ResourceType::TEXTURE);
+}
+
+std::string vku::getModelFileName(const char* fileName)
+{
+    return getResourceFileName(fileName, ResourceType::MODEL);
 }
 
 std::string vku::getResourceFileName(const std::string& fileName, ResourceType resType)
