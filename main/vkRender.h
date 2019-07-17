@@ -15,8 +15,10 @@
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "glm/gtx/hash.hpp"
 
 #include <vulkan/vulkan.hpp>
 
@@ -46,7 +48,23 @@ struct Vertex
 
         return attrDesc;
     }
+
+    bool operator==(const Vertex& other) const
+    {
+        return( pos == other.pos && color == other.color && texCoord == other.texCoord);
+    }
 };
+
+namespace std
+{
+    template<> struct hash<Vertex>
+    {
+        size_t operator()(Vertex const& vertex) const
+        {
+            return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
+        }
+    };
+}
 
 struct UniformBufferObject
 {
@@ -139,7 +157,7 @@ struct CommonParams
     std::vector<vk::UniqueSemaphore> imageAvailableSemaphore;
     std::vector<vk::UniqueSemaphore> renderFinishedSemaphore;
     std::vector<vk::UniqueFence> inFlightFences;
-    
+
     vk::UniqueBuffer vertexBuffer;
     vk::UniqueDeviceMemory vertexBufferMemory;
 
@@ -156,13 +174,14 @@ struct CommonParams
     vk::UniqueImageView depthImageView;
     vk::UniqueDeviceMemory depthImageMemory;
 
+    uint32_t mipLevels;
     vk::UniqueImage textureImage;
     vk::UniqueImageView textureImageView;
     vk::UniqueDeviceMemory textureImageMemory;
     vk::UniqueSampler textureSampler;
    
     std::vector<Vertex> vertices;
-    std::vector<uint16_t> indices;
+    std::vector<uint32_t> indices;
 };
 
 class vkRender
@@ -174,8 +193,8 @@ public:
     int run();
 
 protected:
-    uint32_t m_width = 1280;
-    uint32_t m_height = 720;
+    uint32_t m_width = 1200;
+    uint32_t m_height = 960;
     uint32_t m_max_frame_in_flight = 2;
     uint32_t m_currentFrame = 0; 
     CommonParams m_vulkan;
@@ -191,6 +210,8 @@ private:
     void findQueueFamilies(bool presentSupport);
     
 private:
+    void loadModel();
+
     void drawFrame();
     void updateUniformBuffer(uint32_t index);
 
@@ -230,14 +251,15 @@ private:
     void submit(void (vkRender::*func)(Args...), Args... args);
 
 protected:
-    std::vector<vk::UniqueCommandBuffer> beginSimleTileCommands();
-    void endSimleTileCommands(std::vector<vk::UniqueCommandBuffer>& commandBuffers);
+    std::vector<vk::UniqueCommandBuffer> beginSingleTimeCommands();
+    void endSingleTimeCommands(std::vector<vk::UniqueCommandBuffer>& commandBuffers);
 
-    void transitionImageLayout(vk::UniqueImage& image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
+    void transitionImageLayout(vk::UniqueImage& image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels);
 
     void utilCreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
-    void utilCreateImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory);
-    vk::UniqueImageView utilCreateImageView(vk::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags);
+    void utilCreateImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory);
+    vk::UniqueImageView utilCreateImageView(vk::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels);
+    void generateMipmaps(vk::Image& image, vk::Format format, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
 
     void copyBufferToImage(vk::UniqueBuffer& buffer, vk::UniqueImage& image, uint32_t width, uint32_t height);
     void copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuffer, vk::DeviceSize size);
