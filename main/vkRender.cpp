@@ -369,7 +369,7 @@ void vkRender::pickPhysicalDevice()
         //vk::PhysicalDeviceFeatures2 deviceFeatures2 = device.getFeatures2(dldi);
         if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu || deviceProperties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) {
             m_vulkan.physicalDevice = dev;
-            //m_vulkan.sampleCount = getMaxUsableSampleCount();
+            m_vulkan.sampleCount = getMaxUsableSampleCount();
             return;
         } else {
             continue;
@@ -514,6 +514,7 @@ void vkRender::createRenderPass()
     vk::AttachmentDescription colorAttachmentResolve;
     colorAttachmentResolve.setFormat(m_vulkan.swapChain.format)
         .setSamples(vk::SampleCountFlagBits::e1)
+        .setLoadOp(vk::AttachmentLoadOp::eDontCare)
         .setStoreOp(vk::AttachmentStoreOp::eStore)
         .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
     
@@ -718,7 +719,7 @@ void vkRender::createTextureImage()
     m_vulkan.device->unmapMemory(*stagingBufferMemory);
     stbi_image_free(pixels);
 
-    utilCreateImage(texWidth, texHeight, m_vulkan.mipLevels, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst| vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, m_vulkan.textureImage, m_vulkan.textureImageMemory);
+    utilCreateImage(texWidth, texHeight, m_vulkan.mipLevels, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst| vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, m_vulkan.textureImage, m_vulkan.textureImageMemory);
 
     transitionImageLayout(m_vulkan.textureImage, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, m_vulkan.mipLevels);
     copyBufferToImage(stagingBuffer, m_vulkan.textureImage, texWidth, texHeight);
@@ -739,7 +740,7 @@ void vkRender::createTextureSampler()
         .setAddressModeU(vk::SamplerAddressMode::eRepeat)
         .setAddressModeV(vk::SamplerAddressMode::eRepeat)
         .setAddressModeW(vk::SamplerAddressMode::eRepeat)
-        .setAnisotropyEnable(1)
+        .setAnisotropyEnable(0)
         .setMaxAnisotropy(16)
         .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
         .setCompareEnable(0)
@@ -1044,7 +1045,7 @@ void vkRender::transitionImageLayout(vk::UniqueImage& image, vk::Format format, 
     auto commandBuffers = beginSingleTimeCommands();
 
     vk::ImageSubresourceRange range;
-    range.setLayerCount(1).setLevelCount(1);
+    range.setLayerCount(1).setLevelCount(mipLevels);
 
     vk::ImageAspectFlags aspectFlag;
     if (newLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
@@ -1181,9 +1182,9 @@ void vkRender::copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuff
 void vkRender::utilCreateImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::SampleCountFlagBits msaa, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory)
 {
     vk::ImageCreateInfo imageInfo;
-    imageInfo.setImageType(vk::ImageType::e2D).setExtent(vk::Extent3D(width, height, 1)).setMipLevels(1).setArrayLayers(1).setSamples(msaa)
+    imageInfo.setImageType(vk::ImageType::e2D).setExtent(vk::Extent3D(width, height, 1)).setMipLevels(1).setArrayLayers(1)
         .setFormat(format).setTiling(tiling).setInitialLayout(vk::ImageLayout::eUndefined).setUsage(usage).setSharingMode(vk::SharingMode::eExclusive)
-        .setSamples(vk::SampleCountFlagBits::e1).setMipLevels(mipLevels);
+        .setSamples(msaa).setMipLevels(mipLevels);
 
     image = m_vulkan.device->createImageUnique(imageInfo);
 
