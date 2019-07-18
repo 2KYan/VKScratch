@@ -146,7 +146,6 @@ struct CommonParams
     QueueParams pQueue;
     SwapChainParams swapChain;
 
-    vk::UniqueDescriptorSetLayout descriptorsetLayout;
     vk::UniqueRenderPass renderPass;
     vk::UniquePipelineLayout pipelineLayout;
     vk::UniquePipeline pipeLine;
@@ -167,6 +166,7 @@ struct CommonParams
     std::vector<vk::UniqueBuffer> uniformBuffer;
     std::vector<vk::UniqueDeviceMemory> uniformBufferMemory;
 
+    vk::UniqueDescriptorSetLayout descriptorsetLayout;
     vk::UniqueDescriptorPool descriptorPool;
     std::vector<vk::UniqueDescriptorSet> descriptorSets;
 
@@ -174,7 +174,13 @@ struct CommonParams
     vk::UniqueImageView depthImageView;
     vk::UniqueDeviceMemory depthImageMemory;
 
+    vk::SampleCountFlagBits sampleCount;
+    vk::UniqueImage colorImage;
+    vk::UniqueImageView colorImageView;
+    vk::UniqueDeviceMemory colorImageMemory;
+
     uint32_t mipLevels;
+
     vk::UniqueImage textureImage;
     vk::UniqueImageView textureImageView;
     vk::UniqueDeviceMemory textureImageMemory;
@@ -230,6 +236,7 @@ private:
 
     void createCommandPool();
     void createDepthResources();
+    void createColorResources();
     void createTextureImage();
     void createTextureImageView();
     void createTextureSampler();
@@ -257,7 +264,7 @@ protected:
     void transitionImageLayout(vk::UniqueImage& image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels);
 
     void utilCreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory);
-    void utilCreateImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory);
+    void utilCreateImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::SampleCountFlagBits msaa, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory);
     vk::UniqueImageView utilCreateImageView(vk::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels);
     void generateMipmaps(vk::Image& image, vk::Format format, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
 
@@ -268,4 +275,6 @@ protected:
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
     vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
     bool hasStencilComponent(vk::Format format);
+
+    vk::SampleCountFlagBits getMaxUsableSampleCount();
 };

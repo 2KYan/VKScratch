@@ -163,6 +163,7 @@ int vkRender::initVulkan()
     createGraphicsPipeline();
     createCommandPool();
 
+    createColorResources();
     createDepthResources();
     createFrameBuffers();
 
@@ -217,6 +218,7 @@ void vkRender::recreateSwapChain()
     createImageViews();
     createRenderPass();
     createGraphicsPipeline();
+    createColorResources();
     createDepthResources();
     createFrameBuffers();
 
@@ -367,6 +369,7 @@ void vkRender::pickPhysicalDevice()
         //vk::PhysicalDeviceFeatures2 deviceFeatures2 = device.getFeatures2(dldi);
         if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu || deviceProperties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) {
             m_vulkan.physicalDevice = dev;
+            //m_vulkan.sampleCount = getMaxUsableSampleCount();
             return;
         } else {
             continue;
@@ -486,7 +489,7 @@ void vkRender::createRenderPass()
 {
     vk::AttachmentDescription depthAttachment;
     depthAttachment.setFormat(findDepthFormat())
-        .setSamples(vk::SampleCountFlagBits::e1)
+        .setSamples(m_vulkan.sampleCount)
         .setLoadOp(vk::AttachmentLoadOp::eClear)
         .setStoreOp(vk::AttachmentStoreOp::eDontCare)
         .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
@@ -498,19 +501,31 @@ void vkRender::createRenderPass()
     depthAttachmentRef.setAttachment(1).setLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     vk::AttachmentDescription colorAttachment = {};
-    colorAttachment.setFormat(m_vulkan.swapChain.format).setSamples(vk::SampleCountFlagBits::e1);
-    colorAttachment.setLoadOp(vk::AttachmentLoadOp::eClear).setStoreOp(vk::AttachmentStoreOp::eStore);
-    colorAttachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare).setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
-    colorAttachment.setInitialLayout(vk::ImageLayout::eUndefined).setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
+    colorAttachment.setFormat(m_vulkan.swapChain.format)
+        .setSamples(m_vulkan.sampleCount)
+        .setLoadOp(vk::AttachmentLoadOp::eClear).setStoreOp(vk::AttachmentStoreOp::eStore)
+        .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare).setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+        .setInitialLayout(vk::ImageLayout::eUndefined)
+        .setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal);
 
     vk::AttachmentReference colorAttachmentRef;
     colorAttachmentRef.setAttachment(0).setLayout(vk::ImageLayout::eColorAttachmentOptimal);
+
+    vk::AttachmentDescription colorAttachmentResolve;
+    colorAttachmentResolve.setFormat(m_vulkan.swapChain.format)
+        .setSamples(vk::SampleCountFlagBits::e1)
+        .setStoreOp(vk::AttachmentStoreOp::eStore)
+        .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
     
+    vk::AttachmentReference colorAttachmentResolveRef;
+    colorAttachmentResolveRef.setAttachment(2).setLayout(vk::ImageLayout::eColorAttachmentOptimal);
+
     vk::SubpassDescription subpass;
     subpass.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
         .setColorAttachmentCount(1)
         .setPColorAttachments(&colorAttachmentRef)
-        .setPDepthStencilAttachment(&depthAttachmentRef);
+        .setPDepthStencilAttachment(&depthAttachmentRef)
+        .setPResolveAttachments(&colorAttachmentResolveRef);
 
     vk::SubpassDependency dependency;
     dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL).setDstSubpass(0)
@@ -519,7 +534,7 @@ void vkRender::createRenderPass()
         .setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
         .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
-    std::array<vk::AttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
+    std::array<vk::AttachmentDescription, 3> attachments = { colorAttachment, depthAttachment, colorAttachmentResolve };
     vk::RenderPassCreateInfo renderPassInfo;
     renderPassInfo.setAttachmentCount(attachments.size())
         .setPAttachments(attachments.data())
@@ -583,6 +598,7 @@ void vkRender::createGraphicsPipeline()
     vk::PipelineRasterizationStateCreateInfo rasterizer(vk::PipelineRasterizationStateCreateFlags(), 0, 0, vk::PolygonMode::eFill, vk::CullModeFlags(), vk::FrontFace::eClockwise, 0, 0, 0, 0, 1.0);
 
     vk::PipelineMultisampleStateCreateInfo multisampling;
+    multisampling.setRasterizationSamples(m_vulkan.sampleCount);
 
     vk::PipelineDepthStencilStateCreateInfo depthStencil;
     depthStencil.setStencilTestEnable(0)
@@ -627,9 +643,10 @@ void vkRender::createFrameBuffers()
     m_vulkan.swapChain.frameBuffers.resize(m_vulkan.swapChain.views.size());
 
     for (size_t i = 0; i < m_vulkan.swapChain.views.size(); ++i) {
-        std::array<vk::ImageView, 2> attachments = {
-            *m_vulkan.swapChain.views[i],
+        std::array<vk::ImageView, 3> attachments = {
+            *m_vulkan.colorImageView,
             *m_vulkan.depthImageView,
+            *m_vulkan.swapChain.views[i],
         };
 
         vk::FramebufferCreateInfo frameBufferInfo;
@@ -656,12 +673,25 @@ void vkRender::createDepthResources()
 {
     auto depthFormat = findDepthFormat();
 
-    utilCreateImage(m_vulkan.swapChain.extent.width, m_vulkan.swapChain.extent.height, 1, depthFormat, vk::ImageTiling::eOptimal,
+    utilCreateImage(m_vulkan.swapChain.extent.width, m_vulkan.swapChain.extent.height, 1, m_vulkan.sampleCount, depthFormat, vk::ImageTiling::eOptimal,
                     vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal,
                     m_vulkan.depthImage, m_vulkan.depthImageMemory);
     m_vulkan.depthImageView = utilCreateImageView(*m_vulkan.depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth, 1);
     
     transitionImageLayout(m_vulkan.depthImage, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal, 1);
+}
+
+void vkRender::createColorResources()
+{
+    auto colorFormat = m_vulkan.swapChain.format;
+
+    utilCreateImage(m_vulkan.swapChain.extent.width, m_vulkan.swapChain.extent.height, 1, m_vulkan.sampleCount, colorFormat, vk::ImageTiling::eOptimal,
+                    vk::ImageUsageFlagBits::eTransientAttachment|vk::ImageUsageFlagBits::eColorAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal,
+                    m_vulkan.colorImage, m_vulkan.colorImageMemory);
+    m_vulkan.colorImageView = utilCreateImageView(*m_vulkan.colorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
+    
+    transitionImageLayout(m_vulkan.colorImage, colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal, 1);
+
 }
 
 void vkRender::createTextureImage()
@@ -688,7 +718,7 @@ void vkRender::createTextureImage()
     m_vulkan.device->unmapMemory(*stagingBufferMemory);
     stbi_image_free(pixels);
 
-    utilCreateImage(texWidth, texHeight, m_vulkan.mipLevels, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst| vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, m_vulkan.textureImage, m_vulkan.textureImageMemory);
+    utilCreateImage(texWidth, texHeight, m_vulkan.mipLevels, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst| vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, m_vulkan.textureImage, m_vulkan.textureImageMemory);
 
     transitionImageLayout(m_vulkan.textureImage, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, m_vulkan.mipLevels);
     copyBufferToImage(stagingBuffer, m_vulkan.textureImage, texWidth, texHeight);
@@ -1038,14 +1068,18 @@ void vkRender::transitionImageLayout(vk::UniqueImage& image, vk::Format format, 
         barrier.setDstAccessMask(vk::AccessFlagBits::eTransferWrite);
         srcStage = vk::PipelineStageFlagBits::eTopOfPipe;
         dstStage = vk::PipelineStageFlagBits::eTransfer;
-    } else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
-        barrier.setDstAccessMask(vk::AccessFlagBits::eShaderRead).setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
-        srcStage = vk::PipelineStageFlagBits::eTransfer;
-        dstStage = vk::PipelineStageFlagBits::eFragmentShader;
+    } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eColorAttachmentOptimal) {
+        barrier.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead |vk::AccessFlagBits::eColorAttachmentWrite);
+        srcStage = vk::PipelineStageFlagBits::eTopOfPipe;
+        dstStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
     } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
         barrier.setDstAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentRead|vk::AccessFlagBits::eDepthStencilAttachmentWrite);
         srcStage = vk::PipelineStageFlagBits::eTopOfPipe;
         dstStage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
+    } else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+        barrier.setDstAccessMask(vk::AccessFlagBits::eShaderRead).setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
+        srcStage = vk::PipelineStageFlagBits::eTransfer;
+        dstStage = vk::PipelineStageFlagBits::eFragmentShader;
     } else {
         throw std::invalid_argument("Unsupported layout transition");
     }
@@ -1144,10 +1178,10 @@ void vkRender::copyBuffer(vk::UniqueBuffer& srcBuffer, vk::UniqueBuffer& dstBuff
     endSingleTimeCommands(commandBuffers);
 }
 
-void vkRender::utilCreateImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory)
+void vkRender::utilCreateImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::SampleCountFlagBits msaa, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::UniqueImage& image, vk::UniqueDeviceMemory& imageMemory)
 {
     vk::ImageCreateInfo imageInfo;
-    imageInfo.setImageType(vk::ImageType::e2D).setExtent(vk::Extent3D(width, height, 1)).setMipLevels(1).setArrayLayers(1)
+    imageInfo.setImageType(vk::ImageType::e2D).setExtent(vk::Extent3D(width, height, 1)).setMipLevels(1).setArrayLayers(1).setSamples(msaa)
         .setFormat(format).setTiling(tiling).setInitialLayout(vk::ImageLayout::eUndefined).setUsage(usage).setSharingMode(vk::SharingMode::eExclusive)
         .setSamples(vk::SampleCountFlagBits::e1).setMipLevels(mipLevels);
 
@@ -1218,6 +1252,20 @@ vk::Format vkRender::findSupportedFormat(const std::vector<vk::Format>& candidat
     }
 
     throw std::runtime_error("Failed to find supported format!");
+}
+
+vk::SampleCountFlagBits vkRender::getMaxUsableSampleCount()
+{
+    auto properties = m_vulkan.physicalDevice.getProperties();
+    auto sampleCount = properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts;
+    if (sampleCount & vk::SampleCountFlagBits::e64) { return vk::SampleCountFlagBits::e64; }
+    if (sampleCount & vk::SampleCountFlagBits::e32) { return vk::SampleCountFlagBits::e32; }
+    if (sampleCount & vk::SampleCountFlagBits::e16) { return vk::SampleCountFlagBits::e16; }
+    if (sampleCount & vk::SampleCountFlagBits::e8) { return vk::SampleCountFlagBits::e8; }
+    if (sampleCount & vk::SampleCountFlagBits::e4) { return vk::SampleCountFlagBits::e4; }
+    if (sampleCount & vk::SampleCountFlagBits::e2) { return vk::SampleCountFlagBits::e2; }
+
+    return vk::SampleCountFlagBits::e1; 
 }
 
 bool vkRender::hasStencilComponent(vk::Format format)
