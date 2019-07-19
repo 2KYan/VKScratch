@@ -22,15 +22,12 @@ Vulkan C++ Windowed Project Template
 Create and destroy a Vulkan surface on an SDL window.
 */
 
-#include "vkRender.h"
+#define SDL_MAIN_HANDLED
 
-void run()
-{
-    vkRender render;
-    render.run();
-}
+#include "vkApp.h"
 
 int main()
 {
-    run();
+    vkApp app;
+    return app.run();
 }

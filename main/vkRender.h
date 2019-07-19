@@ -193,32 +193,24 @@ struct CommonParams
 class vkRender
 {
 public:
-    vkRender();
+    vkRender(SDL_Window* window, uint32_t width, uint32_t height);
     virtual ~vkRender();
 
-    int run();
+    int initVulkan(uint32_t width, uint32_t height);
+    int resizeWindow(int32_t width, int32_t height);
+    void waitIdle();
+    void drawFrame();
 
 protected:
-    uint32_t m_width = 1200;
-    uint32_t m_height = 960;
+    uint32_t m_width;
+    uint32_t m_height;
     uint32_t m_max_frame_in_flight = 2;
     uint32_t m_currentFrame = 0; 
     CommonParams m_vulkan;
 
 protected:
-    int initWindow();
-    int initVulkan();
-    int mainLoop();
-    int cleanup();
-    int resizeWindow(int32_t width, int32_t height);
-
-private:
-    void findQueueFamilies(bool presentSupport);
-    
-private:
     void loadModel();
 
-    void drawFrame();
     void updateUniformBuffer(uint32_t index);
 
     void createInstance();
@@ -227,7 +219,7 @@ private:
     void pickPhysicalDevice();
     void createLogicalDevice();
 
-    void createSwapChain();
+    void createSwapChain(uint32_t width, uint32_t height);
     void createImageViews();
     void createRenderPass();
     void createDescriptorSetLayout();
@@ -252,12 +244,13 @@ private:
     void createSyncObjects();
 
     void cleanupSwapChain();
-    void recreateSwapChain();
+    void recreateSwapChain(uint32_t width, uint32_t height);
 
     template <typename... Args>
     void submit(void (vkRender::*func)(Args...), Args... args);
 
 protected:
+    void findQueueFamilies(bool presentSupport);
     std::vector<vk::UniqueCommandBuffer> beginSingleTimeCommands();
     void endSingleTimeCommands(std::vector<vk::UniqueCommandBuffer>& commandBuffers);
 

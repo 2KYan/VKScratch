@@ -8,7 +8,7 @@
 #endif
 
 // Tell SDL not to mess with main()
-#define SDL_MAIN_HANDLED
+//#define SDL_MAIN_HANDLED
 
 #include <chrono>
 
@@ -23,8 +23,8 @@
 
 #include "shaderc/shaderc.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_syswm.h>
+//#include <SDL2/SDL.h>
+//#include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
 
 #include "spdlog/spdlog.h"
@@ -112,43 +112,22 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
-vkRender::vkRender()
+vkRender::vkRender(SDL_Window* window, uint32_t width, uint32_t height)
 {
+    m_vulkan.window = window;
+    m_width = width;
+    m_height = height;
+
+    initVulkan(width, height);
 }
 
 
 vkRender::~vkRender()
 {
+    m_vulkan.instance->destroyDebugUtilsMessengerEXT(m_vulkan.dbgMessenger, nullptr, m_vulkan.dldi);
 }
 
-int vkRender::run()
-{
-    initWindow();
-    initVulkan();
-    mainLoop();
-    cleanup();
-
-    return 0;
-}
-
-int vkRender::initWindow()
-{
-    // Create an SDL window that supports Vulkan rendering.
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        std::cout << "Could not initialize SDL." << std::endl;
-        return 1;
-    }
-    m_vulkan.window = SDL_CreateWindow("Vulkan Window", SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED, m_width, m_height, SDL_WINDOW_VULKAN);
-    if (m_vulkan.window == NULL) {
-        std::cout << "Could not create SDL window." << std::endl;
-        return 1;
-    }
-    SDL_SetWindowResizable(m_vulkan.window, SDL_TRUE);
-    return 0;
-}
-
-int vkRender::initVulkan()
+int vkRender::initVulkan(uint32_t width, uint32_t height)
 {
     createInstance();
     setupDebugMessenger();
@@ -156,7 +135,7 @@ int vkRender::initVulkan()
     pickPhysicalDevice();
     createLogicalDevice();
 
-    createSwapChain();
+    createSwapChain(width, height);
     createImageViews();
     createRenderPass();
     createDescriptorSetLayout();
@@ -208,13 +187,13 @@ void vkRender::cleanupSwapChain()
     m_vulkan.swapChain.swapChainKHR.reset();
 }
 
-void vkRender::recreateSwapChain()
+void vkRender::recreateSwapChain(uint32_t width, uint32_t height)
 {
     m_vulkan.device->waitIdle();
 
     cleanupSwapChain();
 
-    createSwapChain();
+    createSwapChain(width, height);
     createImageViews();
     createRenderPass();
     createGraphicsPipeline();
@@ -228,53 +207,9 @@ void vkRender::recreateSwapChain()
     createCommandBuffers();
 }
 
-int vkRender::cleanup()
-{
-    m_vulkan.instance->destroyDebugUtilsMessengerEXT(m_vulkan.dbgMessenger, nullptr, m_vulkan.dldi);
-
-    SDL_DestroyWindow(m_vulkan.window);
-    SDL_Quit();
-    return 0;
-}
-
 int vkRender::resizeWindow(int32_t width, int32_t height)
 {
-    m_width = width;
-    m_height = height;
-    recreateSwapChain();
-
-    return 0;
-}
-
-int vkRender::mainLoop()
-{
-    bool stillRunning = true;
-    while (stillRunning) {
-
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-
-            switch (event.type) {
-            case SDL_WINDOWEVENT:
-                if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                    resizeWindow(event.window.data1, event.window.data2);
-                }
-                break;
-
-            case SDL_QUIT:
-                stillRunning = false;
-                break;
-
-            default:
-                // Do nothing.
-                break;
-            }
-        }
-        drawFrame();
-
-        SDL_Delay(10);
-    }
-    m_vulkan.device->waitIdle();
+    recreateSwapChain(width, height);
 
     return 0;
 }
@@ -403,7 +338,7 @@ void vkRender::createLogicalDevice()
     m_vulkan.pQueue.queue = m_vulkan.device->getQueue(m_vulkan.pQueue.familyIndex, 0);
 }
 
-void vkRender::createSwapChain()
+void vkRender::createSwapChain(uint32_t width, uint32_t height)
 {
     SwapChainSupportDetails swapchainSupportDetails;
     swapchainSupportDetails.capabilities = m_vulkan.physicalDevice.getSurfaceCapabilitiesKHR(m_vulkan.surfaceKHR);
@@ -436,10 +371,10 @@ void vkRender::createSwapChain()
     if (swapchainSupportDetails.capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max()) {
         swapchainExtent.width = std::max(swapchainSupportDetails.capabilities.minImageExtent.width,
                                          std::min(swapchainSupportDetails.capabilities.maxImageExtent.width,
-                                         m_width));
+                                         width));
         swapchainExtent.height = std::max(swapchainSupportDetails.capabilities.minImageExtent.height,
                                           std::min(swapchainSupportDetails.capabilities.maxImageExtent.height,
-                                          m_height));
+                                          height));
     }
 
     vk::SurfaceTransformFlagBitsKHR preTransform = (swapchainSupportDetails.capabilities.supportedTransforms & vk::SurfaceTransformFlagBitsKHR::eIdentity) ? 
@@ -773,7 +708,7 @@ void vkRender::loadModel()
         4, 5, 6, 6, 7, 4
     }; 
 
-    //return; 
+    return; 
     m_vulkan.vertices.clear();
     m_vulkan.indices.clear();
 
@@ -808,7 +743,7 @@ void vkRender::loadModel()
             vertex.color = { 1.0f, 1.0f, 1.0f };
 
             if (uniqueVertices.count(vertex) == 0) {
-                uniqueVertices[vertex] = m_vulkan.vertices.size();
+                uniqueVertices[vertex] = static_cast<uint32_t>(m_vulkan.vertices.size());
                 m_vulkan.vertices.push_back(vertex);
             } 
 
@@ -917,9 +852,9 @@ void vkRender::updateUniformBuffer(uint32_t index)
     }
     
     UniformBufferObject ubo;
-    ubo.model = glm::rotate(glm::mat4(1.0), time*glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), 1.5f /*m_vulkan.swapChain.extent.width / float(m_vulkan.swapChain.extent.height)*/, 0.1f, 10.0f);
+    ubo.model = glm::rotate(glm::mat4(1.0), time*glm::radians(10.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(90.0f), 1.0f /*m_vulkan.swapChain.extent.width / float(m_vulkan.swapChain.extent.height)*/, 0.1f, 10.0f);
     ubo.proj[1][1] = -1;
 
     auto data = m_vulkan.device->mapMemory(*m_vulkan.uniformBufferMemory[index], 0, sizeof(ubo));
@@ -973,6 +908,11 @@ void vkRender::createSyncObjects()
 
 }
 
+void vkRender::waitIdle()
+{
+    m_vulkan.device->waitIdle();
+}
+
 void vkRender::drawFrame()
 {
     m_vulkan.device->waitForFences(1, &*m_vulkan.inFlightFences[m_currentFrame], VK_TRUE, std::numeric_limits<uint32_t>::max());
@@ -1005,7 +945,7 @@ void vkRender::drawFrame()
 
         m_currentFrame = (m_currentFrame + 1) % m_max_frame_in_flight;
     } catch (vk::OutOfDateKHRError  e) {
-        recreateSwapChain();
+        recreateSwapChain(m_width, m_height);
         return;
     } catch (vk::SystemError e) {
         throw std::runtime_error("failed to acquire swap chain image!");
