@@ -11,7 +11,9 @@
 //#define SDL_MAIN_HANDLED
 
 #include <chrono>
+#include <iostream>
 
+#include "Camera.h"
 #include "vkRender.h"
 #include "vku.h"
 
@@ -112,9 +114,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
-vkRender::vkRender(SDL_Window* window, uint32_t width, uint32_t height)
+vkRender::vkRender(SDL_Window* window, std::shared_ptr<Camera> pTrackBall, uint32_t width, uint32_t height)
 {
     m_vulkan.window = window;
+    m_pCamera = pTrackBall;
     m_width = width;
     m_height = height;
 
@@ -472,7 +475,7 @@ void vkRender::createRenderPass()
 
     std::array<vk::AttachmentDescription, 3> attachments = { colorAttachment, depthAttachment, colorAttachmentResolve };
     vk::RenderPassCreateInfo renderPassInfo;
-    renderPassInfo.setAttachmentCount(attachments.size())
+    renderPassInfo.setAttachmentCount(static_cast<uint32_t>(attachments.size()))
         .setPAttachments(attachments.data())
         .setSubpassCount(1)
         .setPSubpasses(&subpass)
@@ -500,7 +503,8 @@ void vkRender::createDescriptorSetLayout()
     std::array<vk::DescriptorSetLayoutBinding, 2> bindings = { uboLaytoutBinding, samplerLayoutBinding };
 
     vk::DescriptorSetLayoutCreateInfo layoutInfo;
-    layoutInfo.setBindingCount(bindings.size()).setPBindings(bindings.data());
+    layoutInfo.setBindingCount(static_cast<uint32_t>(bindings.size()))
+        .setPBindings(bindings.data());
 
     m_vulkan.descriptorsetLayout = m_vulkan.device->createDescriptorSetLayoutUnique(layoutInfo);
 }
@@ -531,7 +535,8 @@ void vkRender::createGraphicsPipeline()
     vk::Rect2D scissor(vk::Offset2D(0, 0), vk::Extent2D(m_vulkan.swapChain.extent));
     vk::PipelineViewportStateCreateInfo viewportState(vk::PipelineViewportStateCreateFlags(), 1, &viewport, 1, &scissor);
 
-    vk::PipelineRasterizationStateCreateInfo rasterizer(vk::PipelineRasterizationStateCreateFlags(), 0, 0, vk::PolygonMode::eFill, vk::CullModeFlags(), vk::FrontFace::eClockwise, 0, 0, 0, 0, 1.0);
+    vk::PipelineRasterizationStateCreateInfo rasterizer(vk::PipelineRasterizationStateCreateFlags(), 0, 0, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eClockwise, 0, 0, 0, 0, 1.0);
+
 
     vk::PipelineMultisampleStateCreateInfo multisampling;
     multisampling.setRasterizationSamples(m_vulkan.sampleCount);
@@ -587,7 +592,7 @@ void vkRender::createFrameBuffers()
 
         vk::FramebufferCreateInfo frameBufferInfo;
         frameBufferInfo.setRenderPass(*m_vulkan.renderPass)
-            .setAttachmentCount(attachments.size())
+            .setAttachmentCount(static_cast<uint32_t>(attachments.size()))
             .setPAttachments(attachments.data())
             .setWidth(m_vulkan.swapChain.extent.width)
             .setHeight(m_vulkan.swapChain.extent.height)
@@ -683,7 +688,7 @@ void vkRender::createTextureSampler()
         .setMipmapMode(vk::SamplerMipmapMode::eLinear)
         .setMipLodBias(0.0f)
         .setMinLod(0.0f)
-        .setMaxLod(m_vulkan.mipLevels);
+        .setMaxLod(static_cast<float>(m_vulkan.mipLevels));
 
     m_vulkan.textureSampler = m_vulkan.device->createSamplerUnique(samplerInfo);
 
@@ -692,20 +697,20 @@ void vkRender::createTextureSampler()
 void vkRender::loadModel()
 {
     m_vulkan.vertices = {
-        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-        {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
+        {{-0.3f, -0.3f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{0.3f, -0.3f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+        {{0.3f, 0.3f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+        {{-0.3f, 0.3f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
 
-        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-        {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-        {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
+        {{-0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{0.5f, -0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+        {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+        {{-0.5f, 0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
     };
 
     m_vulkan.indices = {
-        0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4
+        0, 2, 1, 0, 3, 2,
+        4, 6, 5, 4, 7, 6
     }; 
 
     return; 
@@ -813,7 +818,8 @@ void vkRender::createDescriptorPool()
     poolSize[1].setType(vk::DescriptorType::eCombinedImageSampler).setDescriptorCount(maxPoolSize);
 
     vk::DescriptorPoolCreateInfo poolInfo;
-    poolInfo.setPoolSizeCount(poolSize.size()).setPPoolSizes(poolSize.data()).setMaxSets(maxPoolSize).setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
+    poolInfo.setPoolSizeCount(static_cast<uint32_t>(poolSize.size()))
+        .setPPoolSizes(poolSize.data()).setMaxSets(maxPoolSize).setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
 
     m_vulkan.descriptorPool = m_vulkan.device->createDescriptorPoolUnique(poolInfo);
 }
@@ -852,10 +858,14 @@ void vkRender::updateUniformBuffer(uint32_t index)
     }
     
     UniformBufferObject ubo;
-    ubo.model = glm::rotate(glm::mat4(1.0), time*glm::radians(10.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(90.0f), 1.0f /*m_vulkan.swapChain.extent.width / float(m_vulkan.swapChain.extent.height)*/, 0.1f, 10.0f);
-    ubo.proj[1][1] = -1;
+    ubo.model = m_pCamera->getModel();
+    ubo.view = m_pCamera->getView();
+    ubo.proj = m_pCamera->getPerspective();
+    //std::cout << glm::to_string(ubo.model) << std::endl;
+    //ubo.model = glm::rotate(glm::mat4(1.0), time*glm::radians(10.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    //ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    //ubo.proj = glm::perspective(glm::radians(90.0f), 1.0f /*m_vulkan.swapChain.extent.width / float(m_vulkan.swapChain.extent.height)*/, 0.1f, 10.0f);
+    //ubo.proj[1][1] = -1;
 
     auto data = m_vulkan.device->mapMemory(*m_vulkan.uniformBufferMemory[index], 0, sizeof(ubo));
     memcpy(data, &ubo, sizeof(ubo));
@@ -878,7 +888,7 @@ void vkRender::createCommandBuffers()
         clearValues[0].color.float32[3] = 1.0;
         clearValues[1].depthStencil = { 1.0f, 0 };
         
-        vk::RenderPassBeginInfo rpBeginInfo(*m_vulkan.renderPass, *m_vulkan.swapChain.frameBuffers[i],  renderArea, clearValues.size(), clearValues.data());
+        vk::RenderPassBeginInfo rpBeginInfo(*m_vulkan.renderPass, *m_vulkan.swapChain.frameBuffers[i],  renderArea, static_cast<uint32_t>(clearValues.size()), clearValues.data());
         m_vulkan.commandBuffers[i]->beginRenderPass(rpBeginInfo, vk::SubpassContents::eInline);
         m_vulkan.commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_vulkan.pipeLine);
         vk::DeviceSize offset =  0;

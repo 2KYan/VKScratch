@@ -159,11 +159,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Camera.cpp" />
     <ClCompile Include="vkApp.cpp" />
     <ClCompile Include="vku.cpp" />
     <ClCompile Include="vkRender.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Camera.h" />
     <ClInclude Include="vkApp.h" />
     <ClInclude Include="vku.h" />
     <ClInclude Include="vkRender.h" />

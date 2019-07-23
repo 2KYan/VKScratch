@@ -1,5 +1,9 @@
-#include "vkApp.h"
+#include <iostream>
+
+#include "Camera.h"
 #include "vkRender.h"
+
+#include "vkApp.h"
 
 vkApp::vkApp()
 {
@@ -29,7 +33,8 @@ int vkApp::init(int width, int height)
     }
     SDL_SetWindowResizable(m_pWindow, SDL_TRUE);
 
-    m_pRender = std::make_unique<vkRender>(m_pWindow, width, height);
+    m_pCamera = std::make_shared<Camera>(100.0f);
+    m_pRender = std::make_unique<vkRender>(m_pWindow, m_pCamera, width, height);
 
     return 0;
 }
@@ -57,11 +62,33 @@ int vkApp::run()
                         resize(event.window.data1, event.window.data2);
                     }
                     break;
+                case SDL_KEYDOWN:
+                case SDL_KEYUP:
+                    if (event.key.state == 0 && event.key.keysym.sym == 0x1b) 
+                        stillRunning = false;
+                    //printf("type:%d, state:%d, scan_code:%d, syn:0x%x, mode:0x%x, repeat:%d\n", event.key.type, event.key.state, event.key.keysym.scancode, event.key.keysym.sym, event.key.keysym.mod, event.key.repeat);
+                    break;
                 case SDL_MOUSEBUTTONDOWN:
+                case SDL_MOUSEBUTTONUP:
+                    //Button down state: 1, up state: 1->:0
+                    //Button: 1: Left, 2: Middle, 3: Right
+                    //printf("type:%d, state:%d, button:%d, x:%d, y:%d, clicks:%d\n", event.button.type, event.button.state, event.button.button, event.button.x, event.button.y, event.button.clicks);
                     break;
                 case SDL_MOUSEMOTION:
+                    //State: 1: Left, 2: Middle, 4: Right
+                    if (event.motion.state == 1) {
+                        //Button down
+                        auto mat = m_pCamera->rotate(event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel, m_width, m_height);
+                        //std::cout << glm::to_string(mat) << std::endl;
+                        //printf("type:%d, state:%d, x:%d, y:%d, xrel:%d, yrel:%d\n", event.motion.type, event.motion.state, event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
+                    } else if (event.motion.state == 4) {
+                        auto mat = m_pCamera->translate(event.motion.xrel, event.motion.yrel);
+                    }
                     break;
                 case SDL_MOUSEWHEEL:
+                    //wheel up, y+, wheel down, y-
+                    //printf("type:%d, x:%d, y:%d, direction:%d\n", event.wheel.type, event.wheel.x, event.wheel.y, event.wheel.direction);
+                    m_pCamera->zoom(event.wheel.y);
                     break;
                 case SDL_QUIT:
                     stillRunning = false;

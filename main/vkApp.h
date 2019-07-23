@@ -4,6 +4,7 @@
 #include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
 
+#include "Camera.h"
 #include "vkRender.h"
 
 class vkApp
@@ -29,6 +30,7 @@ protected:
     int m_height = 960;
 
     SDL_Window* m_pWindow;
+    std::shared_ptr<Camera> m_pCamera;
     std::unique_ptr<vkRender> m_pRender;
 };
 

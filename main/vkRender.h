@@ -190,10 +190,13 @@ struct CommonParams
     std::vector<uint32_t> indices;
 };
 
+
+class Camera;
+
 class vkRender
 {
 public:
-    vkRender(SDL_Window* window, uint32_t width, uint32_t height);
+    vkRender(SDL_Window* window, std::shared_ptr<Camera> pTrackBall, uint32_t width, uint32_t height);
     virtual ~vkRender();
 
     int initVulkan(uint32_t width, uint32_t height);
@@ -207,6 +210,7 @@ protected:
     uint32_t m_max_frame_in_flight = 2;
     uint32_t m_currentFrame = 0; 
     CommonParams m_vulkan;
+    std::shared_ptr<Camera> m_pCamera;
 
 protected:
     void loadModel();
