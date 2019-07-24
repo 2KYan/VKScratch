@@ -224,18 +224,19 @@ protected:
     void createLogicalDevice();
 
     void createSwapChain(uint32_t width, uint32_t height);
-    void createImageViews();
     void createRenderPass();
     void createDescriptorSetLayout();
     void createGraphicsPipeline();
     void createFrameBuffers();
 
     void createCommandPool();
+
     void createDepthResources();
     void createColorResources();
+
     void createTextureImage();
-    void createTextureImageView();
     void createTextureSampler();
+
     void createVertexBuffer();
     void createIndexBuffer();
 

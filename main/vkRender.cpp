@@ -139,7 +139,6 @@ int vkRender::initVulkan(uint32_t width, uint32_t height)
     createLogicalDevice();
 
     createSwapChain(width, height);
-    createImageViews();
     createRenderPass();
     createDescriptorSetLayout();
     createGraphicsPipeline();
@@ -152,10 +151,10 @@ int vkRender::initVulkan(uint32_t width, uint32_t height)
     loadModel();
 
     createTextureImage();
-    createTextureImageView();
     createTextureSampler();
     createVertexBuffer();
     createIndexBuffer();
+    
     createUniformBuffer();
     createDescriptorPool();
     createDescriptorSets();
@@ -197,7 +196,6 @@ void vkRender::recreateSwapChain(uint32_t width, uint32_t height)
     cleanupSwapChain();
 
     createSwapChain(width, height);
-    createImageViews();
     createRenderPass();
     createGraphicsPipeline();
     createColorResources();
@@ -410,10 +408,6 @@ void vkRender::createSwapChain(uint32_t width, uint32_t height)
     m_vulkan.swapChain.format = surfaceFormatKHR.format;
     m_vulkan.swapChain.extent = swapchainExtent;
 
-}
-
-void vkRender::createImageViews()
-{
     vk::ComponentMapping componentMapping(vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eA);
     for (auto image : m_vulkan.swapChain.images) {
         vk::ImageSubresourceRange subResourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
@@ -665,10 +659,7 @@ void vkRender::createTextureImage()
     copyBufferToImage(stagingBuffer, m_vulkan.textureImage, texWidth, texHeight);
     //transitionImageLayout(m_vulkan.textureImage, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
     generateMipmaps(*m_vulkan.textureImage, vk::Format::eR8G8B8A8Unorm, texWidth, texHeight, m_vulkan.mipLevels);
-}
 
-void vkRender::createTextureImageView()
-{
     m_vulkan.textureImageView = utilCreateImageView(*m_vulkan.textureImage, vk::Format::eR8G8B8A8Unorm, vk::ImageAspectFlagBits::eColor, m_vulkan.mipLevels);
 }
 
