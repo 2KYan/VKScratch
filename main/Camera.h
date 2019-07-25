@@ -18,9 +18,14 @@ public:
     glm::mat4 getModelView();
     glm::mat4 getPerspective();
 
+    void forward();
+    void backward();
+    void left();
+    void right();
 private:
     glm::vec2 scale2snorm(int32_t x, int32_t y, int32_t w, int32_t h);
     glm::vec3 project2Spehere(glm::vec2 xy);
+    glm::mat4 updateView();
 
 private:
     float m_size;

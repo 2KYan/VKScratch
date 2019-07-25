@@ -32,11 +32,43 @@ glm::mat4 Camera::getPerspective()
     return m_perspective;
 }
 
+void Camera::forward()
+{
+    auto front = glm::normalize(m_origin - m_eye);
+    m_eye += front * 0.01f;
+    updateView();
+}
+
+void Camera::backward()
+{
+    auto front = glm::normalize(m_origin - m_eye);
+    m_eye -= front * 0.01f;
+    updateView();
+}
+
+void Camera::left()
+{
+    auto front = glm::normalize(m_origin - m_eye);
+    auto horizontal = glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f));
+    m_eye += horizontal * 0.01f;
+    m_origin += horizontal * 0.01f;
+    updateView();
+}
+
+void Camera::right()
+{
+    auto front = glm::normalize(m_origin - m_eye);
+    auto horizontal = glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f));
+    m_eye -= horizontal * 0.01f;
+    m_origin -= horizontal * 0.01f;
+    updateView();
+}
+
 glm::mat4 Camera::zoom(int32_t y)
 {
     //glm::mat4 translate = glm::inverse(glm::lookAt(m_eye, m_origin, m_up)) * m_view;
     m_eye.z += y / 100.f;
-    m_view = glm::lookAt(m_eye, m_origin, m_up);
+    updateView();
 
     return m_view;
 }
@@ -45,9 +77,15 @@ glm::mat4 Camera::translate(int32_t xrel, int32_t yrel)
 {
     m_origin.x += xrel / 1000.f;
     m_origin.y -= yrel / 1000.f;
-    m_view = glm::lookAt(m_eye, m_origin, m_up);
+    updateView();
     //m_view = glm::translate(m_view, glm::vec3(-xrel/1000.f, yrel/1000.f, 0.0f));
 
+    return m_view;
+}
+
+glm::mat4 Camera::updateView()
+{
+    m_view = glm::lookAt(m_eye, m_origin, m_up);
     return m_view;
 }
 

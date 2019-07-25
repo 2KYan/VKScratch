@@ -64,8 +64,24 @@ int vkApp::run()
                     break;
                 case SDL_KEYDOWN:
                 case SDL_KEYUP:
-                    if (event.key.state == 0 && event.key.keysym.sym == 0x1b) 
+                    if (event.key.state == 0 && event.key.keysym.sym == SDLK_ESCAPE) 
                         stillRunning = false;
+                    else if (event.key.state == 1) {
+                        switch (event.key.keysym.sym) {
+                        case SDLK_w:
+                            m_pCamera->forward();
+                            break;
+                        case SDLK_s:
+                            m_pCamera->backward();
+                            break;
+                        case SDLK_a:
+                            m_pCamera->left();
+                            break;
+                        case SDLK_d:
+                            m_pCamera->right();
+                            break;
+                        }
+                    }
                     //printf("type:%d, state:%d, scan_code:%d, syn:0x%x, mode:0x%x, repeat:%d\n", event.key.type, event.key.state, event.key.keysym.scancode, event.key.keysym.sym, event.key.keysym.mod, event.key.repeat);
                     break;
                 case SDL_MOUSEBUTTONDOWN:
@@ -78,11 +94,11 @@ int vkApp::run()
                     //State: 1: Left, 2: Middle, 4: Right
                     if (event.motion.state == 1) {
                         //Button down
-                        auto mat = m_pCamera->rotate(event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel, m_width, m_height);
+                        m_pCamera->rotate(event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel, m_width, m_height);
                         //std::cout << glm::to_string(mat) << std::endl;
                         //printf("type:%d, state:%d, x:%d, y:%d, xrel:%d, yrel:%d\n", event.motion.type, event.motion.state, event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
                     } else if (event.motion.state == 4) {
-                        auto mat = m_pCamera->translate(event.motion.xrel, event.motion.yrel);
+                        m_pCamera->translate(event.motion.xrel, event.motion.yrel);
                     }
                     break;
                 case SDL_MOUSEWHEEL:
