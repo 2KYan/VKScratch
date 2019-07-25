@@ -15,8 +15,7 @@ public:
     glm::mat4 rotate(int32_t x, int32_t y, int32_t xrel, int32_t yrel, int32_t width, int32_t height);
     glm::mat4 zoom(int32_t y);
     glm::mat4 translate(int32_t xrel, int32_t yrel);
-    glm::mat4 getModel();
-    glm::mat4 getView();
+    glm::mat4 getModelView();
     glm::mat4 getPerspective();
 
 private:
@@ -28,7 +27,6 @@ private:
     glm::vec3 m_eye;
     glm::vec3 m_origin;
     glm::vec3 m_up;
-    glm::vec3 m_translate;
 
     glm::mat4 m_model;
     glm::mat4 m_view;

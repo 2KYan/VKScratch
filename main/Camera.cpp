@@ -16,21 +16,15 @@ void Camera::reset()
     m_eye = glm::vec3(0.0f, 0.0f, -2.0f);
     m_origin = glm::vec3(0.0f, 0.0f, 0.0f);
     m_up = glm::vec3(0.0f, 1.0f, 0.0f);
-    m_translate = glm::vec3(0.0f, 0.0f, 0.0f);
 
     m_view = glm::lookAt(m_eye, m_origin, m_up);
     m_model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
     m_perspective = glm::perspective(glm::radians(90.0f), 1.0f /*m_vulkan.swapChain.extent.width / float(m_vulkan.swapChain.extent.height)*/, 0.1f, 10.0f);
 }
 
-glm::mat4 Camera::getModel()
+glm::mat4 Camera::getModelView()
 {
-    return m_model;
-}
-
-glm::mat4 Camera::getView()
-{
-    return m_view;
+    return m_view * m_model;
 }
 
 glm::mat4 Camera::getPerspective()
@@ -49,7 +43,10 @@ glm::mat4 Camera::zoom(int32_t y)
 
 glm::mat4 Camera::translate(int32_t xrel, int32_t yrel)
 {
-    m_view = glm::translate(m_view, glm::vec3(-xrel/1000.f, yrel/1000.f, 0.0f));
+    m_origin.x += xrel / 1000.f;
+    m_origin.y -= yrel / 1000.f;
+    m_view = glm::lookAt(m_eye, m_origin, m_up);
+    //m_view = glm::translate(m_view, glm::vec3(-xrel/1000.f, yrel/1000.f, 0.0f));
 
     return m_view;
 }

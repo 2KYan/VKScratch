@@ -6,8 +6,7 @@ out gl_PerVertex {
 
 layout(binding = 0) uniform UniformBufferObject{
     vec2 foo;
-    mat4 model;
-    mat4 view;
+    mat4 modelview;
     mat4 proj;
 } ubo;
 
@@ -38,7 +37,7 @@ vec2 texcoord[3] = vec2[] (
 void main() {
     // gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
     // fragColor = colors[gl_VertexIndex];
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
+    gl_Position = ubo.proj * ubo.modelview * vec4(inPosition, 1.0);
     fragColor = inColor;
     fragTexCoord = inTexCoord;
 }

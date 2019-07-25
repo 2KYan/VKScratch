@@ -849,8 +849,7 @@ void vkRender::updateUniformBuffer(uint32_t index)
     }
     
     UniformBufferObject ubo;
-    ubo.model = m_pCamera->getModel();
-    ubo.view = m_pCamera->getView();
+    ubo.modelview = m_pCamera->getModelView();
     ubo.proj = m_pCamera->getPerspective();
     //std::cout << glm::to_string(ubo.model) << std::endl;
     //ubo.model = glm::rotate(glm::mat4(1.0), time*glm::radians(10.0f), glm::vec3(0.0f, 0.0f, 1.0f));
