@@ -266,7 +266,7 @@ void vkRender::createInstance()
     .setPpEnabledLayerNames(layers.data());
     
     m_vulkan.instance = vk::createInstanceUnique(instInfo);
-    m_vulkan.dldi.init(*m_vulkan.instance, vkGetInstanceProcAddr);
+    m_vulkan.dldi.init(*m_vulkan.instance);
 }
 
 void vkRender::setupDebugMessenger()
